@@ -1,0 +1,158 @@
+/*******************************************************************************
+ * ratatoskr.layout.scss
+ *
+ * Styles for the Ratatoskr layout.
+ ******************************************************************************/
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000327}}
+.l-constrained, .l-region--highlighted, .l-region--footer {
+  width: 95%;
+  margin: 0 auto;
+  *zoom: 1; }
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Users\/Nova\/\.rvm\/gems\/ruby-1\.9\.3-p484\@omega\.yggdrasil\/gems\/compass-0\.12\.2\/frameworks\/compass\/stylesheets\/compass\/utilities\/general\/_clearfix\.scss}line{font-family:\0000338}}
+  .l-constrained:after, .l-region--highlighted:after, .l-region--footer:after {
+    content: "";
+    display: table;
+    clear: both; }
+
+/* Header */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000334}}
+.l-branding {
+  text-align: center;
+  width: 100%; }
+
+/* Content Area */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000340}}
+.l-highlighted-wrapper {
+  padding: 25px 0; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000346}}
+.l-region--help {
+  margin-bottom: 25px; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000349}}
+.l-content {
+  padding: 25px;
+  margin-bottom: 4px; }
+
+/* Sidebars */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000355}}
+.l-region--sidebar .block {
+  padding: 25px 1em;
+  margin-bottom: 4px; }
+
+/* Footer */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000361}}
+.l-footer-wrapper {
+  padding: 25px 0; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000369}}
+.l-content {
+  margin-bottom: 0; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000373}}
+.l-constrained, .l-region--highlighted, .l-region--footer {
+  width: 90%; }
+
+/* Sidebars */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000378}}
+.l-content {
+  width: 66.50246%;
+  float: left;
+  margin-right: -100%;
+  margin-left: 0%;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000381}}
+.has-no-sidebars .l-content {
+  width: 100%;
+  float: right;
+  margin-left: 0;
+  margin-right: 0;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000384}}
+.l-region--sidebar {
+  width: 33.00493%;
+  float: right;
+  margin-left: 0;
+  margin-right: 0;
+  clear: none;
+  clear: right; }
+
+/* Header */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000392}}
+.l-branding {
+  width: 24.63054%;
+  float: left;
+  margin-right: -100%;
+  margin-left: 0%;
+  clear: none;
+  text-align: left; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\0000396}}
+.l-region--navigation {
+  width: 74.87685%;
+  float: right;
+  margin-left: 0;
+  margin-right: 0;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003102}}
+.l-constrained, .l-region--highlighted, .l-region--footer {
+  width: 80%; }
+
+/* Sidebars */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003107}}
+.l-content {
+  width: 66.50246%;
+  float: left;
+  margin-right: -100%;
+  margin-left: 0%;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003110}}
+.has-no-sidebars .l-content {
+  width: 100%;
+  float: right;
+  margin-left: 0;
+  margin-right: 0;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003113}}
+.l-region--sidebar {
+  width: 33.00493%;
+  float: right;
+  margin-left: 0;
+  margin-right: 0;
+  clear: none;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003120}}
+.l-constrained, .l-region--highlighted, .l-region--footer {
+  width: 1280px; }
+
+/* Sidebars */
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003125}}
+.l-content {
+  width: 66.50246%;
+  float: left;
+  margin-right: -100%;
+  margin-left: 0%;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003128}}
+.has-no-sidebars .l-content {
+  width: 100%;
+  float: right;
+  margin-left: 0;
+  margin-right: 0;
+  clear: none; }
+
+@media -sass-debug-info{filename{font-family:file\:\/\/\/Applications\/MAMP\/htdocs\/cod7\/sites\/all\/themes\/yggdrasil\/sass\/layouts\/ratatoskr\/ratatoskr\.layout\.scss}line{font-family:\00003131}}
+.l-region--sidebar {
+  width: 33.00493%;
+  float: right;
+  margin-left: 0;
+  margin-right: 0;
+  clear: none;
+  clear: none; }

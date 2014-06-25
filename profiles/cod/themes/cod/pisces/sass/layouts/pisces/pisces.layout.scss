@@ -1,0 +1,139 @@
+/*******************************************************************************
+ * pisces.layout.scss
+ *
+ * Styles for the Pisces layout.
+ ******************************************************************************/
+@import "compass";
+@import "breakpoint";
+@import "singularitygs";
+
+// Set breakpoint values.
+$small: 420px;
+$tab  : 768px;
+$menu:  980px;
+$desk : 1200px;
+$large: 1600px;
+
+// Set consistent vertical and horizontal spacing units.
+$vert-spacing-unit: 25px;
+$horz-spacing-unit: 1em;
+
+$grids: 4;
+$grids: add-grid(12 at $tab);
+
+$gutters: 1/16;
+
+
+.l-constrained {
+  width: 95%;
+  margin: 0 auto;
+  @include pie-clearfix;
+}
+
+/* Header */
+.l-branding {
+  text-align: center;
+  width: 100%;
+}
+
+/* Content Area */
+.l-highlighted-wrapper {
+  padding: $vert-spacing-unit 0;
+}
+.l-region--highlighted {
+  @extend .l-constrained;
+}
+.l-region--help {
+  margin-bottom: $vert-spacing-unit;
+}
+.l-content {
+  padding: $vert-spacing-unit;
+  margin-bottom: 4px;
+}
+
+/* Sidebars */
+.l-region--sidebar .block {
+  padding: $vert-spacing-unit $horz-spacing-unit;
+  margin-bottom: 4px;
+}
+
+/* Footer */
+.l-footer-wrapper {
+  padding: $vert-spacing-unit 0;
+}
+.l-region--footer {
+  @extend .l-constrained;
+}
+
+@include breakpoint($tab, true) {
+  .l-content {
+    margin-bottom: 0;
+  }
+
+  .l-constrained {
+    width: 90%;
+  }
+
+  /* Sidebars */
+  .l-content {
+    @include grid-span(8, 1);
+  }
+  .has-no-sidebars .l-content {
+    @include grid-span(12, 1);
+  }
+  .l-region--sidebar {
+    @include grid-span(4, 9);
+    clear: right;
+  }
+}
+
+@include breakpoint($menu, true) {
+  /* Header */
+  .l-branding {
+    @include grid-span(5, 1);
+    text-align: left;
+  }
+  .l-region--header {
+    @include grid-span(7, 6);
+    text-align: left;
+  }
+  .l-region--navigation {
+    @include grid-span(12, 1);
+  }
+}
+
+@include breakpoint($desk, true) {
+  .l-constrained {
+    width: 80%;
+  }
+
+  /* Sidebars */
+  .l-content {
+    @include grid-span(8, 1);
+  }
+  .has-no-sidebars .l-content {
+    @include grid-span(12, 1);
+  }
+  .l-region--sidebar {
+    @include grid-span(4, 9);
+    clear: none;
+  }
+}
+
+@include breakpoint($large, true) {
+  .l-constrained {
+    width: 1280px;
+  }
+
+  /* Sidebars */
+  .l-content {
+    @include grid-span(8, 1);
+  }
+  .has-no-sidebars .l-content {
+    @include grid-span(12, 1);
+  }
+  .l-region--sidebar {
+    @include grid-span(4, 9);
+    clear: none;
+  }
+}

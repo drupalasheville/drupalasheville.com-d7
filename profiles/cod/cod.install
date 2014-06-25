@@ -1,0 +1,95 @@
+<?php
+
+/**
+ * Implements hook_install().
+ */
+function cod_install() {
+  // Create page type.
+
+  // Insert default pre-defined node types into the database. For a complete
+  // list of available node type attributes, refer to the node type API
+  // documentation at: http://api.drupal.org/api/HEAD/function/hook_node_info.
+
+  $types = array(
+    array(
+      'type' => 'page',
+      'name' => st('Basic page'),
+      'base' => 'node_content',
+      'description' => st("Use <em>basic pages</em> for your static content, such as an 'About us' page."),
+      'custom' => 1,
+      'modified' => 1,
+      'locked' => 0,
+    ),
+  );
+
+  foreach ($types as $type) {
+    $type = node_type_set_defaults($type);
+    node_type_save($type);
+    node_add_body_field($type);
+  }
+
+  // Create a default role for site administrators, with all available permissions assigned.
+  $admin_role = new stdClass();
+  $admin_role->name = 'administrator';
+  $admin_role->weight = 2;
+  user_role_save($admin_role);
+  user_role_grant_permissions($admin_role->rid, array_keys(module_invoke_all('permission')));
+  // Set this as the administrator role.
+  variable_set('user_admin_role', $admin_role->rid);
+
+  // Assign user 1 the "administrator" role.
+  db_insert('users_roles')
+    ->fields(array('uid' => 1, 'rid' => $admin_role->rid))
+    ->execute();
+
+  // Enable the admin theme.
+  db_update('system')
+    ->fields(array('status' => 1))
+    ->condition('type', 'theme')
+    ->condition('name', 'seven')
+    ->execute();
+  variable_set('admin_theme', 'seven');
+  variable_set('node_admin_theme', '1');
+
+  // Default page to not be promoted and have comments disabled.
+  variable_set('node_options_page', array('status'));
+  variable_set('comment_page', COMMENT_NODE_HIDDEN);
+
+  // Don't display date and author information for page nodes by default.
+  $theme_settings = variable_get('theme_settings', array());
+  $theme_settings['toggle_node_info_page'] = FALSE;
+  variable_set('theme_settings', $theme_settings);
+
+  // Enable the Skye theme and set it as the default theme.
+  theme_enable(array('omega', 'pisces'));
+  variable_set('theme_default', 'pisces');
+  variable_set('clean_url', 1);
+
+  // Revert features to be sure everything is setup correctly.
+  // Currently disabled because we don't want devs enabling them on startup
+  $revert = array(
+    'cod_wysiwyg' => array('ckeditor_profile'),
+  );
+  features_revert($revert);
+
+  node_access_rebuild(FALSE);
+
+}
+
+/**
+ * Enable the Libraries module.
+ */
+function cod_update_7001() {
+  $module_list = array('libraries');
+  module_enable($module_list);
+  return array();
+}
+
+/**
+ * Enable new dependencies for COD to work properly.
+ */
+function cod_update_7002() {
+  $module_list = array('inline_entity_form', 'views_autorefresh', 'views_datasource');
+  module_enable($module_list);
+  return array();
+}

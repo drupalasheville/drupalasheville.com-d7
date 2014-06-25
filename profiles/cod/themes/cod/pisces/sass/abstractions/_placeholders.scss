@@ -1,0 +1,16 @@
+%button {
+  border-bottom: solid 3px darken($blue,10%);
+  @include border-radius(2px);
+  background-color: $blue;
+  font-size: 0.88em;
+  height: 40px;
+  padding: 10px 20px;
+  a:link, a:visited, a.active-trail, a:hover, a:active {
+    color: $white;
+    text-decoration: none;
+  }
+  &:hover {
+    background-color: lighten($blue,5%);
+    border-bottom: solid 3px darken($blue,2%);
+  }
+}

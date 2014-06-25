@@ -1,0 +1,64 @@
+body {
+  background: url(../images/white_wave.png) $lt-gray repeat;
+  a {
+    color: $blue;
+    text-decoration: none;
+    &:hover, &:active {
+      text-decoration: underline;
+    }
+  }
+}
+
+.l-header {
+  padding-top: 18px;
+}
+
+.l-navigation {
+  background-color: $blue;
+  color: $white;
+  margin-bottom: 1em;
+  a {
+    color: $white;
+    &:hover {
+      color: lighten($blue,40%);
+    }
+  }
+}
+
+.l-highlighted-wrapper {
+  background: url(../images/highlighted.png) $gray-blue top left repeat-x;
+  height: 300px;
+}
+
+.l-region--highlighted {
+  color: $white;
+  h2 {
+    font-size: 2em;
+    margin-bottom: 1.5em;
+    text-align: center;
+  }
+  p {
+    text-align: center;
+    .button {
+      @extend %button;
+      clear: left;
+    }
+    a {
+      color: $white;
+      text-decoration: none;
+    }
+  }
+  padding: 30px;
+}
+
+.front {
+  .l-main-wrapper {
+    background-color: $white;
+  }
+}
+
+.not-front {
+  .l-content, .l-region--sidebar .block {
+    background-color: $white;
+  }
+}

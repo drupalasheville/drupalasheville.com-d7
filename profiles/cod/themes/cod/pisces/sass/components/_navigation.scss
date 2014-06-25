@@ -1,0 +1,128 @@
+@import "../abstractions/placeholders";
+
+.l-region--navigation {
+  .menu {
+    padding-left: 0;
+    a {
+      text-decoration: none;
+    }
+    li {
+      display: inline;
+      font-size: 0.88em;
+      list-style-image: none;
+      padding: 8px 12px;
+      white-space: nowrap;
+    }
+    .expanded .menu {
+      display: none;
+    }
+  }
+}
+
+.mean-container .mean-bar {
+  background: $gray 20px 11px no-repeat;
+  float: left;
+  min-height: 40px;
+  padding: 6px 0 0 0;
+  position: absolute;
+  width: 100%;
+  z-index: 999999;
+}
+.mean-container .mean-nav {
+  background: none repeat scroll 0 0 $white;
+  float: left;
+  margin-top: 40px;
+  width: 100%;
+  ul li {
+    a {
+      border-bottom: 1px solid $lt-gray;
+      color: $gray;
+      display: block;
+      float: left;
+      margin: 0;
+      padding: 1em 5%;
+      text-align: left;
+      text-decoration: none;
+      text-transform: none;
+      width: 90%;
+    }
+    a.mean-expand {
+      background: url(../images/expand.gif) transparent center center no-repeat;
+      &:hover {
+        background: url(../images/expand.gif) transparent center center no-repeat;
+      }
+      &.mean-clicked {
+        background: url(../images/collapse.gif) transparent center center no-repeat;
+      }
+    }
+    li {
+      background-color: $lt-gray;
+      &:first-child {
+        border-top: 1px solid darken($lt-gray,10%);
+      }
+      a {
+        border-bottom: 1px solid darken($lt-gray,10%);
+        padding: 1em 7%;
+        width: 86%;
+      }
+    }
+  }
+}
+.mean-nav > ul > li:last-child {
+  background-color: $blue;
+  a {
+    color: $white;
+    text-align: center;
+  }
+}
+.mean-container .l-region--preface .menu {
+  display: none;
+}
+
+.l-region--preface .menu {
+  padding-left: 0;
+  li {
+    background-color: $lt-gray;
+    display: inline;
+    font-size: 0.84em;
+    list-style-image: none;
+    list-style: none;
+    padding: 10px 12px;
+    &:hover {
+      background-color: $blue;
+      a:link, a:visited {
+        color: $white;
+      }
+    }
+    a {
+      text-decoration: none;
+      &:link, &:visited {
+        color: $gray;
+      }
+    }
+  }
+}
+
+.tabs--primary {
+  border-bottom: none;
+  margin-bottom: 0;
+  li {
+    float: left;
+    margin-right: 0;
+  }
+  a {
+    @include border-radius-multi(6px,6px,0,0);
+    background-color: lighten($lt-blue,26%);
+    &:hover {
+      background-color: lighten($lt-blue,20%);
+      text-decoration: none;
+    }
+  }
+  .active {
+    color: #000000;
+  }
+  a.active {
+    background-color: $white;
+    @include border-radius-multi(6px,6px,0,0);
+  }
+}

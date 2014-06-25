@@ -1,0 +1,36 @@
+.triptych {
+  img {
+    width: 32.6%;
+  }
+}
+
+.l-region--footer {
+  .block {
+    h3 {
+      font-size: 1.5em;
+      text-align: center;
+    }
+    img {
+      width: 100%;
+    }
+    p {
+      line-height: 1.5em;
+    }
+  }
+}
+
+@include breakpoint($tab, true) {
+  .l-region--footer {
+    .block {
+      float: left;
+      width: 28%;
+      margin: 2%;
+      &:first-child {
+        width: 100%;
+      }
+      img {
+        width: 100%;
+      }
+    }
+  }
+}

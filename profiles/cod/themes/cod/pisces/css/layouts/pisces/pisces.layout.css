@@ -1,0 +1,144 @@
+/*******************************************************************************
+ * pisces.layout.scss
+ *
+ * Styles for the Pisces layout.
+ ******************************************************************************/
+.l-constrained, .l-region--highlighted, .l-region--footer {
+  width: 95%;
+  margin: 0 auto;
+  *zoom: 1; }
+  .l-constrained:after, .l-region--highlighted:after, .l-region--footer:after {
+    content: "";
+    display: table;
+    clear: both; }
+
+/* Header */
+.l-branding {
+  text-align: center;
+  width: 100%; }
+
+/* Content Area */
+.l-highlighted-wrapper {
+  padding: 25px 0; }
+
+.l-region--help {
+  margin-bottom: 25px; }
+
+.l-content {
+  padding: 25px;
+  margin-bottom: 4px; }
+
+/* Sidebars */
+.l-region--sidebar .block {
+  padding: 25px 1em;
+  margin-bottom: 4px; }
+
+/* Footer */
+.l-footer-wrapper {
+  padding: 25px 0; }
+
+@media (min-width: 768px) {
+  .l-content {
+    margin-bottom: 0; }
+
+  .l-constrained, .l-region--highlighted, .l-region--footer {
+    width: 90%; }
+
+  /* Sidebars */
+  .l-content {
+    width: 66.50246%;
+    float: left;
+    margin-right: -100%;
+    margin-left: 0%;
+    clear: none; }
+
+  .has-no-sidebars .l-content {
+    width: 100%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none; }
+
+  .l-region--sidebar {
+    width: 33.00493%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none;
+    clear: right; } }
+@media (min-width: 980px) {
+  /* Header */
+  .l-branding {
+    width: 41.37931%;
+    float: left;
+    margin-right: -100%;
+    margin-left: 0%;
+    clear: none;
+    text-align: left; }
+
+  .l-region--header {
+    width: 58.12808%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none;
+    text-align: left; }
+
+  .l-region--navigation {
+    width: 100%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none; } }
+@media (min-width: 1200px) {
+  .l-constrained, .l-region--highlighted, .l-region--footer {
+    width: 80%; }
+
+  /* Sidebars */
+  .l-content {
+    width: 66.50246%;
+    float: left;
+    margin-right: -100%;
+    margin-left: 0%;
+    clear: none; }
+
+  .has-no-sidebars .l-content {
+    width: 100%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none; }
+
+  .l-region--sidebar {
+    width: 33.00493%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none;
+    clear: none; } }
+@media (min-width: 1600px) {
+  .l-constrained, .l-region--highlighted, .l-region--footer {
+    width: 1280px; }
+
+  /* Sidebars */
+  .l-content {
+    width: 66.50246%;
+    float: left;
+    margin-right: -100%;
+    margin-left: 0%;
+    clear: none; }
+
+  .has-no-sidebars .l-content {
+    width: 100%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none; }
+
+  .l-region--sidebar {
+    width: 33.00493%;
+    float: right;
+    margin-left: 0;
+    margin-right: 0;
+    clear: none;
+    clear: none; } }

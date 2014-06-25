@@ -1,0 +1,18 @@
+@import "compass";
+@import "breakpoint";
+@import "singularitygs";
+
+// Set breakpoint values.
+$small: 420px;
+$tab  : 768px;
+$desk : 1200px;
+$large: 1600px;
+
+// Set consistent vertical and horizontal spacing units.
+$vert-spacing-unit: 25px;
+$horz-spacing-unit: 1em;
+
+$grids: 4;
+$grids: add-grid(12 at $tab);
+
+$gutters: 1/16;
