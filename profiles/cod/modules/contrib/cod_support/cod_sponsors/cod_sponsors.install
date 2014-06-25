@@ -1,0 +1,50 @@
+<?php
+/**
+ * @file
+ * COD Sponsors install file.
+ */
+
+/**
+ * Move sponsor level data from one field to another.
+ *
+ * Note: Cron must run after to fully remove field.
+ */
+function cod_sponsors_update_7001() {
+
+  $query = new EntityFieldQuery();
+
+  $sponsors = $query->entityCondition('entity_type', 'node')
+    ->propertyCondition('type', 'sponsor')
+    ->execute();
+
+  $delete_is_safe = empty($sponsors['node']) ? TRUE : FALSE;
+  foreach ($sponsors['node'] as $sponsor_id => $sponsor) {
+    $entity = entity_load_single('node', $sponsor_id);
+    $sponsor_wrapper = entity_metadata_wrapper('node', $entity);
+    if (isset($sponsor_wrapper->field_sponsorship_level)) {
+      if ($sponsor_wrapper->field_sponsor_sponsorship_level->value() == '') {
+        $sponsor_wrapper->field_sponsor_sponsorship_level->set($sponsor_wrapper->field_sponsorship_level->value());
+      }
+      $text = $sponsor_wrapper->field_sponsor_sponsorship_level->value();
+      if ($sponsor_wrapper->field_sponsor_sponsorship_level->value() == $sponsor_wrapper->field_sponsorship_level->value()) {
+        $delete_is_safe = TRUE;
+      }
+    }
+    $sponsor_wrapper->save();
+  }
+  if ($delete_is_safe) {
+    field_delete_field('field_sponsorship_level');
+  }
+}
+
+/**
+ * Revert sponsors fields and views
+ */
+function cod_sponsors_update_7002() {
+  $revert = array(
+    'cod_sponsors' => array('field_base', 'field_instance', 'views_view', 'taxonomy'),
+  );
+  features_revert($revert);
+
+  return array();
+}

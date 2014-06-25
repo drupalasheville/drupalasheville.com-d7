@@ -1,0 +1,242 @@
+<?php
+
+define('DEFAULT_EVENT','default_event');
+include_once('cod_events.features.inc');
+
+/**
+ * Implements hook_menu_alter().
+ * Change the OG 'groups' hook to be an event instead.
+ */
+function cod_events_menu_alter(&$items) {
+  if (isset($items['node/%/group'])) {
+    $items['node/%/group']['access callback'] = 'cod_events_get_group_admin';
+
+    /*
+    $items['node/%/event/dashboard'] = array(
+      'title' => 'Dashboard',
+      'weight' => -10,
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+    );
+    */
+  }
+  if (isset($items['node/%/tickets'])) {
+    $items['node/%/tickets']['access callback'] = 'cod_events_get_ticket_admin';
+    $items['node/%/event/tickets'] = $items['node/%/tickets'];
+    $items['node/%/event/tickets']['access arguments'][] = TRUE;
+  }
+}
+
+/*
+ * Make the event dashboard be an admin path
+ */
+function cod_schedule_admin_paths() {
+  $paths = array(
+    'node/*/event' => TRUE,
+    'node/*/event/*' => TRUE,
+  );
+  return $paths;
+}
+
+/*
+ * Menu Alter access callback.
+ * Allows OG to be used elsewhere on the site, but will make the group tab
+ * disappear when used on the event content type.
+ */
+function cod_events_get_group_admin($entity_type, $etid, $event = FALSE) {
+  // If we're not dealing with nodes, we aren't dealing with events. Skip.
+  if ($entity_type != 'node') {
+    return og_ui_get_group_admin($entity_type, $etid);
+  }
+  $entity = node_load($etid);
+  if (isset($entity->type) && $entity->type == 'event' && $event == TRUE) {
+    return og_ui_get_group_admin($entity_type, $etid);
+  }
+  return FALSE;
+}
+
+/**
+ * Menu Alter access callback.
+ * Allows Tickets to be used elsewhere on the site, but will make the ticket tab
+ * disappear when used on the event content type.
+ */
+function cod_events_get_ticket_admin($entity_type, $etid, $op, $event = FALSE) {
+  // If we're not dealing with nodes, we aren't dealing with events. Skip.
+  if ($entity_type != 'node') {
+    return ticket_type_overview_access($entity_type, $etid, $op);
+  }
+  $entity = node_load($etid);
+  if (isset($entity->type) && $entity->type == 'event' && $event == TRUE) {
+    return ticket_type_overview_access($entity_type, $etid, $op);
+  }
+  return FALSE;
+}
+
+/*
+* Implements hook_ctools_plugin_directory -
+* This lets ctools know to scan my module for a content_type plugin file
+* Detailed docks in ctools/ctools.api.php
+*/
+function cod_events_ctools_plugin_directory($module, $plugin) {
+  // we'll be nice and limit scandir() calls
+  if ($module == 'ctools' && $plugin == 'content_types') {
+    return 'plugins/content_types';
+  }
+  if ($module == 'entityreference') {
+    return "plugins/entityreference/$plugin";
+  }
+}
+
+/**
+ * Implements hook_forms().
+
+function cod_events_forms() {
+  $forms = array();
+  $days = cod_events_days();
+  if ($days = cod_events_days()) {
+    foreach ($days as $day_nid) {
+      $forms['cod_events_timeslots_'. $day_nid . '_form']['callback'] = 'cod_events_timeslots_form';
+    }
+  }
+  return $forms;
+}
+ */
+
+/**
+ * Implements hook_og_user_access_alter().
+ *
+ * Borrowed from commons_groups.
+ * Todo: Abstract out commons groups so group visibility can by used elsewhere.
+ * Allow non-members to post to groups if they have sitewide access.
+ */
+function cod_events_og_user_access_alter(&$perm, $context) {
+  $account = $context['account'];
+  $group_type = $context['group_type'];
+  $group = $context['group'];
+
+  if ($group_type != 'node') {
+    return;
+  }
+  // The purpose of this function is to grant permissions to create content
+  // in a group to non-members of the group, when the group's privacy settings
+  // (field_og_subscribe_settings) is set to "Anyone can contribute".
+  if (og_is_member($group_type, $group->nid, 'user', $account, array(OG_STATE_ACTIVE, OG_STATE_PENDING, OG_STATE_BLOCKED))) {
+    // The user is a group member, so comply to the OG permissions.
+    return;
+  }
+
+  // See if the Entity allows for non-member postings
+  $event_entity_types = cod_events_get_group_content_entity_types();
+  foreach ($event_entity_types['node'] as $type => $options) {
+    if(isset($options['non_member']) && user_access("create $type content")) {
+      $perm["create $type content"] = TRUE;
+    }
+  }
+}
+
+/**
+ * Borrowed from commons_groups.
+ * Todo: Abstract out commons groups to query event content types.
+ * Returns an array of entity types that are enabled via Commons Groups.
+ */
+function cod_events_get_group_content_entity_types() {
+  // Find all Commons Entity integrations.
+  $event_entity_integrations = module_invoke_all('event_entity_integration');
+  if (empty($event_entity_integrations)) {
+    return array();
+  }
+
+  foreach ($event_entity_integrations as $entity_type => $integration) {
+    foreach ($integration as $bundle => $options) {
+      if (isset($options['is_group_content']) && $options['is_group_content'] == FALSE) {
+        unset($event_entity_integrations[$entity_type][$bundle]);
+      }
+    }
+    // If an entity type has no integrations, don't return it.
+    if (empty($event_entity_integrations[$entity_type])) {
+      unset($event_entity_integrations[$entity_type]);
+    }
+  }
+
+  return $event_entity_integrations;
+
+}
+
+/*
+ * Add the default event select box for choosing a default event.
+ */
+function cod_events_form_cod_base_admin_settings_alter(&$form, &$form_state, $form_id) {
+  $form['cod_events'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('COD Events'),
+    '#weight' => 5,
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+  );
+
+  $options = array(t('No Default Event'));
+  $eventQuery = new EntityFieldQuery();
+  $event_list =  $eventQuery->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'event')
+    ->propertyCondition('status', 1)
+    ->propertyOrderBy('title')
+    ->execute();
+  if (count($event_list['node']) == 1) {
+    $events = array_keys($event_list['node']);
+    $default_event = array_pop($events);
+    variable_set('cod_events_default_event', $default_event);
+    $form['cod_events']['#description'] = "Node $default_event is the only event, and set to default";
+  }
+  else if (!empty($event_list['node'])) {
+    $events = entity_load('node', array_keys($event_list['node']));
+    foreach($events AS $event) {
+      $options[$event->nid] = $event->title;
+    }
+
+    $form['cod_events']['cod_events_default_event'] = array(
+      '#type' => 'select',
+      '#title' => t('Default Event'),
+      '#options' => $options,
+      '#default_value' => variable_get('cod_events_default_event', 0),
+    );
+  }
+  else {
+    $form['cod_events']['#markup'] = "You currently have no events";
+    variable_set('cod_events_default_event', 0);
+  }
+
+}
+/**
+* Implements hook_form_alter().
+* - Add default event to all new node types, using the default event setting.
+*/
+function cod_events_form_alter(&$form, &$form_state, $form_id) {
+  // If the form isn't an entity, or if its not a group, return
+  //TODO: Reverse how we make this check. Entities that don't contain groups will error here.
+  if(!isset($form['#entity']) || og_is_group($form['#entity_type'], $form['#entity'])) {
+    return;
+  }
+
+  $which_flag = flag_get_flags($entity_type = NULL, $content_subtype = NULL, $account = NULL);
+  $default_event = isset($which_flag['default_event']) ? $which_flag['default_event'] : FALSE;
+  $data = flag_get_flag_flagging_data($default_event->name);
+  $default_event = array_pop($data);
+  // Set and Hide the og_group_ref field if $default event is set.
+  if(isset($form['og_group_ref'])) {
+    if (!empty($default_event) && $form_state['field']['og_group_ref'][LANGUAGE_NONE]['items_count'] === 0) {
+      $form['og_group_ref'][LANGUAGE_NONE][0]['default']['#default_value'] = $default_event->entity_id;
+      if(!user_access('administer content')) {
+        $form['og_group_ref']['#access'] = FALSE;
+      }
+    }
+    // Hide the ref field, unless you're an admin, if default event is not set.
+    else if($form_state['field']['og_group_ref'][LANGUAGE_NONE]['items_count'] > 0 && !user_access('administer content')) {
+      $form['og_group_ref']['#access'] = FALSE;
+    }
+  }
+}
+
+function cod_events_views_default_views_alter(&$views) {
+  if(isset($views['cod_events_admin'])) {
+    $views['cod_events_admin']->display['default']->display_options['header']['area']['content'] .= '<ul class="action-links"><li>' . l('Add Event', 'node/add/event') . '</li></ul>';
+  }
+}

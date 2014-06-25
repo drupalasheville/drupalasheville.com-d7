@@ -1,0 +1,44 @@
+<?php
+/**
+ * @file
+ * Basic ticket registration states install file.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function ticket_state_basic_install() {
+  // Create default states.
+  $states = array(
+    'pending' => array(
+      'label' => 'Pending',
+      'description' => 'The ticket registration is awaiting further action.',
+      'weight' => -10,
+    ),
+    'complete' => array(
+      'label' => 'Complete',
+      'description' => 'The ticket registration has been completed.',
+      'weight' => 5,
+    ),
+    'canceled' => array(
+      'label' => 'Canceled',
+      'description' => 'The ticket registration has been cancelled.',
+      'weight' => 10,
+    ),
+  );
+
+  foreach ($states as $state_name => $state) {
+    $ticket_state = entity_create('ticket_state',
+      array(
+        'name' => $state_name,
+        'label' => $state['label'],
+        'description' => $state['description'],
+        'weight' => $state['weight'],
+        'module' => 'ticket_state_basic',
+        'active' => 1,
+      )
+    );
+    $ticket_state->save();
+  }
+
+}

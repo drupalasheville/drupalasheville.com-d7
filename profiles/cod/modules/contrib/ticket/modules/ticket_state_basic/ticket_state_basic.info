@@ -1,0 +1,14 @@
+name = Basic Registration States
+description = Provides sample ticket registration states.
+package = Ticket
+core = 7.x
+
+dependencies[] = ticket_state
+
+
+; Information added by drush on 2014-06-01
+version = "7.x-1.0-alpha5+9-dev"
+core = "7.x"
+project = "ticket"
+datestamp = "1401655206"
+

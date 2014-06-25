@@ -1,0 +1,73 @@
+<?php
+/**
+ * @file
+ * COD Sponsors module.
+ */
+
+include_once 'cod_sponsors.features.inc';
+
+/**
+  * Implements hook_event_entity_integration.
+  */
+function cod_sponsors_event_entity_integration() {
+  return array(
+   'node' => array(
+     'sponsor' => array(
+       'non_member' => TRUE,
+     ),
+   ),
+  );
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function cod_sponsors_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'sponsor_node_form') {
+    if(isset($form['og_group_ref'])) {
+      $form['og_group_ref'][LANGUAGE_NONE][0]['default']['#multiple'] = FALSE;
+    }
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function cod_sponsors_menu() {
+  $items['sponsorship/add/%node'] = array(
+    'page callback' => 'cod_sponsors_product_add',
+    'page arguments' => array(2),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Custom function to add product(s) to a cart by product id.
+ *
+ * The hook adds a path with two wildcards (which become variables later
+ * in the function). The first spot is the for the product id, and the
+ * second is the quantity. For example, the url
+ * “mysite.com/product/add/5555/2” will add the 2 of the product with id
+ * 5555 to the cart. When the user visits this path, the product id and
+ * quantity are sent to the MYMODULE_product_add function… which we need
+ * to add now.
+ */
+function cod_sponsors_product_add($node) {
+  if (isset($node->field_sponsor_sponsorship_level[LANGUAGE_NONE][0]['tid'])) {
+    $term = taxonomy_term_load($node->field_sponsor_sponsorship_level[LANGUAGE_NONE][0]['tid']);
+    if (isset($term->field_sponsor_product[LANGUAGE_NONE][0]['product_id'])) {
+      $pid = $term->field_sponsor_product[LANGUAGE_NONE][0]['product_id'];
+      if ($product = commerce_product_load($pid)) {
+        global $user;
+        $uid = $user->uid;
+        $data['context']['display_path'] = 'node/' . $node->nid;
+        $line_item = commerce_product_line_item_new($product, 1, 0, $data);
+        $line_item->field_ticket_type['und'][]['value'] = 0;
+        $line_item = commerce_cart_product_add($uid, $line_item, FALSE);
+        drupal_goto('checkout');
+      }
+    }
+  }
+}

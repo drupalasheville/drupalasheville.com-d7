@@ -1,0 +1,36 @@
+name = Ticket
+description = Provides functionality for events to have tickets.
+package = Ticket
+core = 7.x
+
+dependencies[] = date
+dependencies[] = entity
+dependencies[] = multiple_entity_form
+dependencies[] = text
+dependencies[] = views
+
+; Central Entity Controller. This file is missing! Delete?
+;files[] = includes/ticket.controller.inc
+
+; Entity includes.
+files[] = includes/ticket_type.entity.inc
+files[] = includes/ticket_type.metadata.inc
+files[] = includes/ticket_registration.entity.inc
+files[] = includes/ticket_registration.metadata.inc
+files[] = includes/ticket_registration.admin.inc
+
+; Views includes.
+files[] = views/ticket.views.inc
+files[] = views/ticket_views_plugin_display_ticket_registration.inc
+files[] = views/ticket_views_handler_field_entity_link.inc
+files[] = views/ticket_views_handler_field_registration_link.inc
+files[] = views/ticket_views_handler_field_registration_link_cancel.inc
+files[] = views/ticket_views_handler_field_registration_link_edit.inc
+
+
+; Information added by drush on 2014-06-01
+version = "7.x-1.0-alpha5+9-dev"
+core = "7.x"
+project = "ticket"
+datestamp = "1401655206"
+

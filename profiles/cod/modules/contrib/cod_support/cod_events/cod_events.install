@@ -1,0 +1,328 @@
+<?php
+
+/**
+ * Implements hook_enable().
+ */
+function cod_events_install() {
+  db_insert('date_formats')
+    ->fields(array(
+      'format' => 'g:ia',
+      'type' => 'cod_time',
+      'locked' => 1,
+    ))
+    ->execute();
+
+  db_insert('date_formats')
+    ->fields(array(
+      'format' => "H:i",
+      'type' => 'cod_time',
+      'locked' => 1,
+    ))
+    ->execute();
+
+  variable_set('date_format_cod_time', 'g:ia');
+}
+
+/**
+ * Implements hook_schema().
+ */
+function cod_events_schema() {
+  $schema = array();
+  $schema['cod_event_room'] = array(
+    'description' => '@todo.',
+    'fields' => array(
+      'evtrid' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique block ID.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Room Name',
+        'translatable' => TRUE,
+      ),
+      'capacity' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => 'Room Capacity',
+        'translatable' => TRUE,
+      ),
+      'status' => array(
+         'type' => 'int',
+         'not null' => TRUE,
+         // Set the default to ENTITY_CUSTOM without using the
+         // constant as it is not safe to use it at this point.
+         'default' => 0x01,
+         'size' => 'tiny',
+         'description' => 'The exportable status of the entity.',
+       ),
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('evtrid'),
+  );
+  $schema['cod_event_time'] = array(
+    'description' => '@todo.',
+    'fields' => array(
+      'evttid' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique Time ID.',
+      ),
+      'date_label' => array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Human Readable Date',
+        'translatable' => TRUE,
+      ),
+      'status' => array(
+         'type' => 'int',
+         'not null' => TRUE,
+         // Set the default to ENTITY_CUSTOM without using the
+         // constant as it is not safe to use it at this point.
+         'default' => 0x01,
+         'size' => 'tiny',
+         'description' => 'The exportable status of the entity.',
+       ),
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('evttid'),
+  );
+  return $schema;
+}
+
+/**
+ * Update the cod_events image field to not include 'cache' in the name
+ */
+function cod_events_update_7001() {
+  $num_updated = db_update('field_config') // Table name no longer needs {}
+    ->fields(array(
+      'field_name' => 'field_event_image',
+    ))
+    ->condition('field_name', 'field_image_cache', '=')
+    ->execute();
+
+  $num_updated = db_update('field_config_instance') // Table name no longer needs {}
+    ->fields(array(
+      'field_name' => 'field_event_image',
+    ))
+    ->condition('field_name', 'field_image_cache', '=')
+    ->execute();
+
+  if(db_table_exists('field_data_field_image_cache')) {
+    db_rename_table('field_data_field_image_cache', 'field_data_field_event_image');
+    db_change_field('field_data_field_event_image', 'field_image_cache_fid', 'field_event_image_fid', array('type' => 'int', 'not null' => FALSE));
+    db_change_field('field_data_field_event_image', 'field_image_cache_alt', 'field_event_image_alt', array('type' => 'varchar', 'length' => 512, 'not null' => FALSE));
+    db_change_field('field_data_field_event_image', 'field_image_cache_title', 'field_event_image_title', array('type' => 'varchar',  'length' => 1024, 'not null' => FALSE));
+    db_change_field('field_data_field_event_image', 'field_image_cache_width', 'field_event_image_width', array('type' => 'int', 'not null' => FALSE));
+    db_change_field('field_data_field_event_image', 'field_image_cache_height', 'field_event_image_height', array('type' => 'int', 'not null' => FALSE));
+  }
+  if(db_table_exists('field_revision_field_image_cache')) {
+    db_rename_table('field_revision_field_image_cache', 'field_revision_field_event_image');
+    db_change_field('field_revision_field_event_image', 'field_image_cache_fid', 'field_event_image_fid', array('type' => 'int', 'not null' => FALSE));
+    db_change_field('field_revision_field_event_image', 'field_image_cache_alt', 'field_event_image_alt', array('type' => 'varchar', 'length' => 512, 'not null' => FALSE));
+    db_change_field('field_revision_field_event_image', 'field_image_cache_title', 'field_event_image_title', array('type' => 'varchar',  'length' => 1024, 'not null' => FALSE));
+    db_change_field('field_revision_field_event_image', 'field_image_cache_width', 'field_event_image_width', array('type' => 'int', 'not null' => FALSE));
+    db_change_field('field_revision_field_event_image', 'field_image_cache_height', 'field_event_image_height', array('type' => 'int', 'not null' => FALSE));
+  }
+  return t('Event field_image_cache changed to field_event_image.');
+}
+
+/**
+ * Update to install the schema if its not installed already.
+ */
+function cod_events_update_7002() {
+  drupal_install_schema('cod_events');
+  return true;
+}
+
+/**
+ * Set a default time formatter.
+ */
+function cod_events_update_7003() {
+  if(!variable_get('date_format_cod_time', NULL)) {
+    db_insert('date_formats')
+      ->fields(array(
+        'format' => 'g:ia',
+        'type' => 'cod_time',
+        'locked' => 1,
+      ))
+      ->execute();
+
+    db_insert('date_formats')
+      ->fields(array(
+        'format' => "H:i",
+        'type' => 'cod_time',
+        'locked' => 1,
+      ))
+      ->execute();
+
+    variable_set('date_format_cod_time', 'g:ia');
+  }
+}
+
+function cod_events_update_7004() {
+  $result = db_select('field_config', 'f')
+    ->fields('f', array('data'))
+    ->condition('field_name', 'field_dates', '=')
+    ->execute()
+    ->fetchField();
+  $data = unserialize($result);
+  $data['settings']['todate'] = 'required';
+  $data['settings']['tz_handling'] = 'date';
+
+  $updated = db_update('field_config')
+    ->fields(array(
+      'data' => serialize($data)
+    ))
+    ->condition('field_name', 'field_dates', '=')
+    ->execute();
+
+  if(!db_field_exists('field_data_field_dates', 'field_dates_timezone')) {
+    db_add_field('field_data_field_dates', 'field_dates_timezone', array(
+        'type' => 'varchar',
+        'not null' => FALSE,
+        'length' => 50
+      ));
+    db_add_field('field_data_field_dates', 'field_dates_offset', array(
+        'type' => 'int',
+        'not null' => FALSE,
+        'length' => 11
+      ));
+    db_add_field('field_data_field_dates', 'field_dates_offset2', array(
+        'type' => 'int',
+        'not null' => FALSE,
+        'length' => 11
+      ));
+  }
+  if(!db_field_exists('field_revision_field_dates', 'field_dates_timezone')) {
+    db_add_field('field_revision_field_dates', 'field_dates_timezone', array(
+        'type' => 'varchar',
+        'not null' => FALSE,
+        'length' => 50
+      ));
+    db_add_field('field_revision_field_dates', 'field_dates_offset', array(
+        'type' => 'int',
+        'not null' => FALSE,
+        'length' => 11
+      ));
+    db_add_field('field_revision_field_dates', 'field_dates_offset2', array(
+        'type' => 'int',
+        'not null' => FALSE,
+        'length' => 11
+      ));
+  }
+
+  $revert = array(
+    'cod_events' => array('field_base', 'views_view'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+/**
+ * Remove legacy views from the database.
+ */
+function cod_events_update_7005() {
+  $result = db_delete('og_role_permission')
+    ->condition('module', 'cod_events', '=')
+    ->execute();
+
+  // Remove legacy views:
+  $views = array('cod_event_schedule', 'cod_events_timeslots', 'cod_session_timeslot', 'cod_event_sessions', 'cod_event_timeslots');
+  foreach ($views as $view_name) {
+    if ($view = views_get_view($view_name)) {
+      $view->delete(TRUE);
+    }
+  }
+  module_enable(array('cod_schedule', 'og_vocab'));
+
+  $revert = array(
+    'cod_schedule' => array('field_base', 'views_view'),
+    'cod_bof' => array('field_base', 'field_instance', 'views_view'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+/**
+ * Set OG default variables
+ */
+function cod_events_update_7006() {
+  $revert = array(
+    'cod_events' => array('variable'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+/**
+ * Remove the 'administrator' OG role; 'administrator member' should be used.
+ * Make sure the default administrator role id exists
+ */
+function cod_events_update_7007() {
+  $og_roles = og_roles('node', 'event');
+
+  foreach ($og_roles AS $rid => $name) {
+    if ($name === 'administrator') {
+      og_role_delete($rid);
+    }
+    if ($name === 'administrator member') {
+      variable_set('og_group_manager_default_rids_node_event', array($rid => $rid));
+    }
+  }
+
+  return array();
+}
+
+/**
+ * Revert event features that use new flag3 API
+ */
+function cod_events_update_7008() {
+  $revert = array(
+    'cod_events' => array('page_manager_pages', 'flag', 'views_view'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+
+/**
+ * Enable event program field
+ */
+function cod_events_update_7009() {
+  $revert = array(
+    'cod_events' => array('field_base', 'field_instance'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+/**
+ * Enable cod_events_pages
+ */
+function cod_events_update_7010() {
+  module_enable(array('cod_events_pages'));
+  return array();
+}

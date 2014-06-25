@@ -1,0 +1,114 @@
+<?php
+/**
+ * @file
+ * Code for the COD Session Evaluations feature.
+ */
+
+include_once 'cod_session_evaluations.features.inc';
+
+/**
+* Implements hook_form_alter().
+*/
+function cod_session_evaluations_form_session_evaluation_node_form_alter(&$form, &$form_state, $form_id) {
+  if (!empty($form['field_eval_session']['und']['#default_value'])) {
+    $session_nid = $form['field_eval_session']['und']['#default_value'];
+    $form['field_eval_session']['#disabled'] = TRUE;
+    // If the user has already reviewed the referenced session, don't let her
+    // submit another session evaluation.
+    if (cod_session_evaluations_user_reviewed_session($form['uid']['#value'], $session_nid[0])) {
+      $form['#access'] = FALSE;
+      drupal_set_message(t('You have already evaluated this session. You can only submit one evaluation per session.'));
+      drupal_goto('node/'. $session_nid[0]);
+    }
+  }
+}
+
+/**
+* Implements hook_node_view().
+*/
+function cod_session_evaluations_node_view($node, $view_mode, $langcode) {
+  //sanity check -- we should only be posting on the session nodes. Return if its any other node or listing
+  //todo -- probably want to be able add the link for a listing of nodes, but we can't at the moment
+  //        since entities aren't loaded on anything but the full view
+  if($node->type != 'session' || $view_mode != 'full' || !user_access('create session_evaluation content')) {
+    return;
+  }
+  global $user;
+  $account = $user;
+  $bundle = 'session';
+
+  //lets check first that the session was accepted AND its the event has started
+  //how could you evaluate a presentation if it wasn't ever scheduled?
+  if(empty($node->field_session_timeslot)) {
+    return;
+  }
+
+  $time_slot = $node->field_session_timeslot[LANGUAGE_NONE][0]['entity'];
+  $time_entity = node_load($time_slot->field_slot_types_time_slot[LANGUAGE_NONE][0]['target_id']);
+  //maybe we change this, but I feel like we should show the link as soon as the presentation starts. What if it doesn't go the whole alloted time?
+  $time_start = new DateTime($time_entity->field_slot_datetime[LANGUAGE_NONE][0]['value']);
+
+  //how could you evaluate a presenatation if it never was accepted OR it hasn't occured yet?
+  //note -- TZ handling could cause issues here, but as long as you don't have multiple timezones on one conference, it should be good
+  $now = new DateTime();
+
+  if(!($node->field_accepted['und'][0]['value']) || strtotime($time_start->getTimestamp()) > $now->getTimestamp()) {
+    return;
+  }
+  // Hide the "Provide feedback on this session" links if the user has already
+  // submitted a survey about this session.
+  if (!cod_session_evaluations_user_reviewed_session($account->uid, $node->nid) && $node->type == $bundle) {
+    $links = array(
+      'feedback' => array(
+        'title' => variable_get('cod_session_evaluations_feedback_text', t('Provide feedback on this session')),
+        'href' => 'node/add/session-evaluation',
+        'query' => array('nid' => $node->nid, 'destination' => $_GET['q']),
+      ),
+    );
+
+    $node->content['links']['cod_session_evaluations_feedback'] = array(
+      '#theme' => 'links__node__cod_session_evaluations_feedback',
+      '#links' => $links,
+      '#attributes' => array('class' => array('links', 'inline')),
+    );
+  }
+}
+
+/**
+* Implements hook_node_validate().
+*/
+function cod_session_evaluations_node_validate($node, $form, &$form_state) {
+  if ($node->type == 'session_evaluation') {
+    // Check if user has already submitted an evaluation for this session.
+    if (cod_session_evaluations_user_reviewed_session($form['uid']['#value'], $form['field_eval_session']['und']['#value'])) {
+      form_set_error('field_eval_session', t('You have already evaluated this session. You can only submit one evaluation per session.'));
+    }
+  }
+}
+
+/**
+ * Implements hook_field_widget_form_alter().
+ */
+function cod_session_evaluations_field_widget_form_alter(&$element, &$form_state, $context) {
+  $field_name = 'field_eval_session';
+  // Set a default value based on the nid.
+  if (isset($element['#field_name']) && $element['#field_name'] == $field_name && isset($_GET['nid'])) {
+    $element['#default_value'] = $_GET['nid'];
+  }
+}
+
+/**
+* Helper function to determine whether a user has already reviewed
+* a particular session.
+*/
+function cod_session_evaluations_user_reviewed_session($uid, $nid) {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->propertyCondition('status', 1)
+    ->propertyCondition('type', 'session_evaluation')
+    ->propertyCondition('uid', $uid)
+    ->fieldCondition('field_eval_session', 'target_id', $nid);
+  $result = $query->execute();
+  return !empty($result['node']);
+}
+

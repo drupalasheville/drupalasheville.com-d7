@@ -1,0 +1,100 @@
+<?php
+/**
+ * @file
+ * Code for the COD BoF Session feature.
+ */
+
+include_once('cod_bof.features.inc');
+
+function cod_bof_views_post_execute(&$view) {
+
+  if ($view->name == 'cod_bof_schedule_content' && $view->current_display == 'default' && $view->args[1] == 'bof_session') {
+    $footer = cod_bof_get_bof_link($view->args[0], count($view->result), $view->args[2], $view->args[3]);
+    if ($footer) {
+      $view->attachment_after = $footer;
+    }
+  }
+}
+
+function cod_bof_form_bof_session_node_form_alter(&$form, &$form_state, $form_id) {
+  $time_slot_id = FALSE;
+  if (isset($_GET['edit']['field_session_timeslot']['target_id'])) {
+    $time_slot_id = check_plain($_GET['edit']['field_session_timeslot']['target_id']);
+  }
+
+  if(!isset($form['#node']->nid) && $time_slot_id) {
+    unset($form['#fieldgroups']['group_bof_schedule']);
+    $form['field_session_timeslot']['#access'] = FALSE;
+    $form['og_group_ref']['#access'] = FALSE;
+  }
+}
+
+function cod_bof_node_presave($node) {
+  $time_slot_id = FALSE;
+  if (isset($_GET['edit']['field_session_timeslot']['target_id'])) {
+    $time_slot_id = check_plain($_GET['edit']['field_session_timeslot']['target_id']);
+  }
+  if (isset($_GET['og_group_ref'])) {
+    $gid = check_plain($_GET['og_group_ref']);
+  }
+
+  if($time_slot_id && isset($gid) && $node->is_new) {
+    $node->field_session_timeslot[LANGUAGE_NONE][0]['target_id'] = $time_slot_id;
+    $node->og_group_ref[LANGUAGE_NONE][0]['target_id'] = $gid;
+    drupal_set_message("Bof created successfully! Please wait upto 5 minutes for it to appear on the BoF page");
+  }
+  return $node;
+}
+
+function cod_bof_get_bof_link($time_slot_entity, $result, $capacity = 0, $event_id) {
+
+  $bof_allowed = FALSE;
+
+  if ($capacity > 0 && $result < $capacity) {
+    $bof_allowed = TRUE;
+  }
+  else if ($capacity === 0) {
+    $bof_allowed = TRUE;
+  }
+  if($bof_allowed) {
+    if(user_access('create bof_session content')) {
+      return l('Create a BoF','node/add/bof-session',array('query' => array('og_group_ref' => $event_id, 'edit[field_session_timeslot][target_id]' => $time_slot_entity, 'destination' => 'node/'.$event_id.'/program/schedule/bofs')));
+      //$footer['content'] =
+      //$footer['display'] = TRUE;
+    }
+  }
+  return FALSE;
+}
+
+function cod_bof_module_implements_alter(&$implementations, $hook) {
+  if ($hook == 'views_post_execute') {
+    // Move views_pre_render() to the end of the list. module_implements()
+    // iterates through $implementations with a foreach loop which PHP iterates
+    // in the order that the items were added, so to move an item to the end of
+    // the array, we remove it and then add it.
+    $group = $implementations['cod_bof'];
+    unset($implementations['cod_bof']);
+    $implementations['cod_bof'] = $group;
+  }
+}
+
+function cod_bof_custom_theme() {
+  if (arg(4) == 'bofs' && arg(5) == 'sign') {
+    $path = drupal_get_path('module', 'cod_bof');
+    drupal_add_css($path . '/css/sign-style.css');
+    return 'seven';
+  }
+}
+
+/**
+ * Implements hook_event_entity_integration.
+ */
+function cod_bof_event_entity_integration() {
+  return array(
+    'node' => array(
+      'bof_session' => array(
+        'non_member' => TRUE,
+      ),
+    ),
+  );
+}

@@ -1,0 +1,204 @@
+<?php
+
+/**
+ * @file multiple_entity_form.module
+ * Provides FormAPI helpers for creating forms showing multiple entities.
+ */
+
+/**
+ * Multiple entity form helper.
+ *
+ * Allows forms to show selected fields from multiple entities of multiple
+ * types.
+ *
+ * Note that this is not a form builder, but a helper for form builder.
+ *
+ * @param $form
+ *  The form array to work on.
+ * @param $form_state
+ *  The form state array.
+ * @param $entity_data
+ *  An array of the entities to include and details about them. This is a
+ *  numeric array, where each item is an array containing:
+ *    - entity_type: The type of this entity.
+ *    - entity: The entity itself. This may be a new, unsaved entity created
+ *      with entity_create().
+ *    - fields: (optional) An array of field names to show for this entity, in
+ *      the required order. If omitted, all fields for the entity are shown in
+ *      the order set in FieldUI admin.
+ *    - 'fieldset' (optional) If TRUE, puts this entity's form elements in a
+ *      fieldset. If this is a string, this is additionally used as the fieldset
+ *      title.
+ *
+ * @see ctools_field_invoke_field()
+ */
+function multiple_entity_form($form, &$form_state, $entity_data) {
+  ctools_include('fields');
+
+  $form['#tree'] = TRUE;
+
+  foreach ($entity_data as $index => $entity_data_single) {
+    $entity_type  = $entity_data_single['entity_type'];
+    $entity       = $entity_data_single['entity'];
+
+    list($entity_id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+
+    // Get all the field instances for this bundle anyway.
+    $field_instances = field_info_instances($entity_type, $bundle);
+
+    // If the fields are not specified, we use them all.
+    if (!isset($entity_data_single['fields'])) {
+      // Fill them in on the incoming data so they go into the form stash.
+      $entity_data_single['fields'] = array_keys($field_instances);
+    }
+    $fields = $entity_data_single['fields'];
+
+    // Get the language code for the entity.
+    if (isset($entity->language)) {
+      $langcode = field_valid_language($entity->language);
+    }
+    else {
+      $langcode = field_valid_language(NULL);
+    }
+
+    // Create a key for this entity's place in the form.
+    // For existing entities, this is ENTITY_TYPE:ID.
+    // For new entities, this is ENTITY_TYPE:new_INDEX
+    if (isset($entity_id)) {
+      $form_key = "$entity_type:$entity_id";
+    }
+    else {
+      $form_key = "$entity_type:new_$index";
+    }
+
+    // Stash the list of form keys we create.
+    $form['#entity_form_keys'][] = $form_key;
+
+    // Build up the per-entity subform.
+    $form[$form_key] = array(
+      // This allows FieldAPI to have multiple field form elements attached.
+      '#parents' => array($form_key),
+      '#entity_type' => $entity_type,
+      '#entity' => $entity,
+      '#bundle' => $bundle,
+      '#field_names' => $entity_data_single['fields'],
+    );
+
+    // Create the fieldset if requested.
+    if (isset($entity_data_single['fieldset'])) {
+      $form[$form_key]['#type'] = 'fieldset';
+
+      if ($entity_data_single['fieldset'] !== TRUE) {
+        $form[$form_key]['#title'] = $entity_data_single['fieldset'];
+      }
+    }
+
+    // CTools only works with a single field at a time, so add each one in to
+    // the form.
+    foreach ($fields as $field_name) {
+      $field_instance = $field_instances[$field_name];
+
+      // If no language is provided use the default site language.
+      $field_invoke_options = array(
+        'language' => $langcode,
+        'default' => TRUE,
+      );
+
+      $form[$form_key] += (array) ctools_field_invoke_field($field_instance, 'form', $entity_type, $entity, $form[$form_key], $form_state, $field_invoke_options);
+    }
+  }
+  //dsm($form, 'end of form builder');
+
+  return $form;
+}
+
+/**
+ * Form validate handler.
+ *
+ * Adapted from fape_field_edit_field_form_validate().
+ */
+function multiple_entity_form_validate($form, &$form_state) {
+  ctools_include('fields');
+
+  // Act on each entity in turn.
+  foreach ($form['#entity_form_keys'] as $form_key) {
+    $entity_type  = $form[$form_key]['#entity_type'];
+    $bundle       = $form[$form_key]['#bundle'];
+    $entity       = $form[$form_key]['#entity'];
+    $field_names  = $form[$form_key]['#field_names'];
+
+    // We have to act on each field separately, as the CTools API function
+    // is for only a single field.
+    foreach ($field_names as $field_name) {
+      // Start with a fresh errors array for each field.
+      $errors = array();
+
+      $field_instance = field_info_instance($entity_type, $field_name, $bundle);
+
+      // Extract field values from submitted values.
+      // We pass a partial $form array to the Field API hook. This contains at
+      // its base the #parents array, which tells Field API where to look for
+      // the values in $form_state.
+      ctools_field_invoke_field_default($field_instance, 'extract_form_values', $entity_type, $entity, $form[$form_key], $form_state);
+
+      // Check generic, field-type-agnostic errors first.
+      ctools_field_invoke_field_default($field_instance, 'validate', $entity_type, $entity, $errors);
+      // Check field-type specific errors.
+      ctools_field_invoke_field($field_instance, 'validate', $entity_type, $entity, $errors);
+
+      // Let other modules validate the entity.
+      // Avoid module_invoke_all() to let $errors be taken by reference.
+      foreach (module_implements('field_attach_validate') as $module) {
+        $function = $module . '_field_attach_validate';
+        $function($entity_type, $entity, $errors);
+      }
+
+      if ($errors) {
+        // Pass field-level validation errors back to widgets for accurate error
+        // flagging.
+        foreach ($errors as $field_errors) {
+          foreach ($field_errors as $langcode => $errors) {
+            $field_state = field_form_get_state($form[$form_key]['#parents'], $field_name, $langcode, $form_state);
+            $field_state['errors'] = $errors;
+            field_form_set_state($form[$form_key]['#parents'], $field_name, $langcode, $form_state, $field_state);
+          }
+        }
+        ctools_field_invoke_field_default($field_instance, 'form_errors', $entity_type, $entity, $form[$form_key], $form_state);
+      }
+    }
+  }
+}
+
+/**
+ * Form submit helper for building entities from form values.
+ *
+ * Note that this does not save entities; that is left to the caller.
+ */
+function multiple_entity_form_submit($form, &$form_state) {
+  ctools_include('fields');
+
+  //dsm($form);
+  //dsm($form_state, 'fs');
+
+  // Act on each entity in turn.
+  foreach ($form['#entity_form_keys'] as $form_key) {
+    $entity_type  = $form[$form_key]['#entity_type'];
+    $bundle       = $form[$form_key]['#bundle'];
+    $entity       = $form[$form_key]['#entity'];
+    $field_names  = $form[$form_key]['#field_names'];
+
+    // We have to act on each field separately, as the CTools API function
+    // is for only a single field.
+    foreach ($field_names as $field_name) {
+      $field_instance = field_info_instance($entity_type, $field_name, $bundle);
+
+      // Extract field values from submitted values.
+      // We pass a partial $form array to the Field API hook. This contains at
+      // its base the #parents array, which tells Field API where to look for
+      // the values in $form_state.
+      ctools_field_invoke_field_default($field_instance, 'extract_form_values', $entity_type, $entity, $form[$form_key], $form_state);
+
+      ctools_field_invoke_field_default($field_instance, 'submit',              $entity_type, $entity, $form[$form_key], $form_state);
+    }
+  }
+}

@@ -1,0 +1,11 @@
+name = Commerce Stock Decimal formatter
+description = Provide a Decimal formater for converting stock levels into text messages.
+package = Commerce (stock)
+dependencies[] = number
+core = 7.x
+; Information added by drupal.org packaging script on 2013-08-05
+version = "7.x-2.0-rc1"
+core = "7.x"
+project = "commerce_stock"
+datestamp = "1375728368"
+

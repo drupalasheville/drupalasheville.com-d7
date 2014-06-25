@@ -1,0 +1,16 @@
+name = Commerce Simple Stock Rules
+description = Validation rules for simple stock.
+package = Commerce (stock)
+dependencies[] = number
+dependencies[] = commerce_product
+dependencies[] = commerce_order
+dependencies[] = commerce_stock
+dependencies[] = commerce_ss
+dependencies[] = rules
+core = 7.x
+; Information added by drupal.org packaging script on 2013-08-05
+version = "7.x-2.0-rc1"
+core = "7.x"
+project = "commerce_stock"
+datestamp = "1375728368"
+

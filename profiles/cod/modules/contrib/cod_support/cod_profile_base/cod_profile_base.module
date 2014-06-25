@@ -1,0 +1,21 @@
+<?php
+/**
+ * @file
+ * Drupal needs this blank file.
+ */
+
+include_once 'cod_profile_base.features.inc';
+
+/**
+* Implements hook_form_FORM_ID_alter().
+*/
+function cod_profile_base_form_user_login_alter(&$form, &$form_state, $form_id) {
+  drupal_set_title(t('Log in'));
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function cod_profile_base_menu_alter(&$items) {
+  $items['user/register']['title'] = 'Sign up';
+}

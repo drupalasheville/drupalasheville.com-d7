@@ -1,0 +1,23 @@
+name = COD Profile (Optional fields)
+description = Provides additional fields such as dietary needs and t-shirt size.
+core = 7.x
+package = COD
+version = 7.x-1.0-alpha1
+project = cod_profile_optional
+dependencies[] = cod_profile_base
+dependencies[] = features
+dependencies[] = list
+dependencies[] = options
+features[features_api][] = api:2
+features[field_base][] = field_dietary_needs
+features[field_base][] = field_t_shirt_size
+features[field_instance][] = user-user-field_dietary_needs
+features[field_instance][] = user-user-field_t_shirt_size
+
+
+; Information added by drush on 2014-06-01
+version = "7.x-1.0-alpha5+25-dev"
+core = "7.x"
+project = "cod_support"
+datestamp = "1401655221"
+

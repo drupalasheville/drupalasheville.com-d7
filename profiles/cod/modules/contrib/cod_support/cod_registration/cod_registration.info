@@ -1,0 +1,44 @@
+name = COD Registration
+description = Provides registration options for ticket and cod_events
+core = 7.x
+package = COD
+project = cod_registration
+dependencies[] = cod_base
+dependencies[] = cod_events
+dependencies[] = ctools
+dependencies[] = date
+dependencies[] = date_api
+dependencies[] = date_popup
+dependencies[] = entity
+dependencies[] = features
+dependencies[] = inline_entity_form
+dependencies[] = og
+dependencies[] = options
+dependencies[] = strongarm
+dependencies[] = text
+dependencies[] = ticket
+dependencies[] = ticket_state
+dependencies[] = ticket_user_registration
+dependencies[] = views
+dependencies[] = views_field_view
+features[ctools][] = strongarm:strongarm:1
+features[ctools][] = views:views_default:3.0
+features[features_api][] = api:2
+features[field_base][] = field_event_tickets
+features[field_instance][] = node-event-field_event_tickets
+features[ticket_state][] = cancelled
+features[ticket_state][] = checked_in
+features[ticket_state][] = completed
+features[ticket_state][] = pending
+features[user_permission][] = administer ticket
+features[user_permission][] = administer ticket states
+features[user_permission][] = edit all ticket registrations
+features[user_permission][] = view all ticket registrations
+
+
+; Information added by drush on 2014-06-01
+version = "7.x-1.0-alpha5+25-dev"
+core = "7.x"
+project = "cod_support"
+datestamp = "1401655221"
+

@@ -1,0 +1,558 @@
+<?php
+/**
+ * @file
+ * Code for the COD Schedule feature.
+ */
+
+include_once('cod_schedule.features.inc');
+
+/**
+ * Implements hook_menu().
+ */
+function cod_schedule_menu() {
+  $items = array();
+
+  $items['room/%cod_event_room'] = array(
+    'title callback' => 'entity_label',
+    'title arguments' => array('cod_event_room', 1),
+    'page callback' => 'cod_schedule_room_view',
+    'page arguments' => array(1),
+    'access callback' => 'entity_access',
+    'access arguments' => array('view', 'cod_event_room', 1),
+    'file' => 'cod_schedule.pages.inc',
+  );
+
+  $items['room/%cod_event_room/view'] = array(
+    'title' => 'View',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+  $items['time/%cod_event_time'] = array(
+    'title callback' => 'entity_label',
+    'title arguments' => array('cod_event_time', 1),
+    'page callback' => 'cod_schedule_time_view',
+    'page arguments' => array(1),
+    'access callback' => 'entity_access',
+    'access arguments' => array('view', 'cod_event_time', 1),
+    'file' => 'cod_schedule.pages.inc',
+  );
+
+  $items['time/%cod_event_time/view'] = array(
+    'title' => 'View',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+  $items['node/%node/event/schedule'] = array(
+    'title' => 'Schedule',
+    'type' => MENU_LOCAL_TASK,
+    'page callback' => 'cod_schedule_schedule_admin_page',
+    'page arguments' => array(1),
+    'access callback' => TRUE,
+    'weight' => 0,
+    'file' => 'includes/schedule.admin.inc',
+  );
+
+  $items['node/%node/event/schedule/room'] = array(
+    'title' => 'Add Room',
+    'type' => MENU_LOCAL_ACTION,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cod_event_room_form', new CodEventRoom(), 'add', 1),
+    'access callback' => TRUE,
+    'file' => 'includes/schedule.admin.inc',
+   );
+
+  $items['node/%node/event/schedule/time'] = array(
+    'title' => 'Add Time',
+    'type' => MENU_LOCAL_ACTION,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cod_event_time_form', new CodEventTime(), 'add', 1),
+    'access callback' => TRUE,
+    'file' => 'includes/schedule.admin.inc',
+  );
+
+  // NoJS/AJAX callbacks that can use the default Schedule AJAX form system.
+  // Arguments: node/NODEID/edit/schedule/nojs/OPERATION/TIMEID/ROOMID
+  // TODO: Add load handlers for time,room and operations.
+  // Or just use the views_ui_cache method to load the forms.
+  $items['node/%node/event/schedule/%ctools_js/%/%/%'] = array(
+    'page callback' => 'cod_schedule_schedule_timeslot_callback',
+    'page arguments' => array(4, 1, 5, 6, 7),
+    'delivery callback' => 'ajax_deliver',
+    'access callback' => 'cod_schedule_schedule_access',
+    'access arguments' => array(1),
+    'file' => 'includes/schedule.admin.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function cod_schedule_permission() {
+  $entities = array(
+    'cod_event_room' => 'Rooms',
+    'cod_event_time' => 'Times',
+  );
+
+  $perms = array();
+
+  foreach($entities AS $entity_name => $entity_label) {
+
+    $perms = $perms + array(
+      'administer ' . $entity_name => array(
+        'title' => t('Administer !entity', array('!entity' => $entity_label)),
+        'description' => t('Allows users to configure rooms and their fields.'),
+        'restrict access' => TRUE,
+      ),
+      'create ' . $entity_name => array(
+        'title' => t('Create !entity', array('!entity' => $entity_label)),
+        'description' => t('Allows users to create rooms.'),
+      ),
+      'view ' . $entity_name => array(
+        'title' => t('View !entity', array('!entity' => $entity_label)),
+        'description' => t('Allows users to view rooms.'),
+      ),
+      'edit any ' . $entity_name => array(
+        'title' => t('Edit any !entity', array('!entity' => $entity_label)),
+        'description' => t('Allows users to edit any rooms.'),
+      ),
+      'edit own ' . $entity_name => array(
+        'title' => t('Edit own !entity', array('!entity' => $entity_label)),
+        'description' => t('Allows users to edit own rooms.'),
+      ),
+    );
+  }
+
+  return $perms;
+}
+
+/**
+ * Implement hook_og_permission().
+ * We want to set all the same OG permissions that we get globally.
+ */
+function cod_schedule_og_permission() {
+  $perms = cod_schedule_permission();
+  foreach($perms AS $perm_id => $permission) {
+    $perms[$perm_id]['default role'] = array(OG_ADMINISTRATOR_ROLE);
+  }
+  return $perms;
+}
+
+function cod_schedule_form_node_form_alter(&$form, &$form_state) {
+  if (isset($form['#node_edit_form']) && isset($form['field_event_timeslots'])) {
+    $form['field_event_timeslots']['#access'] = FALSE;
+  }
+}
+
+/**
+ * Helper function determines days there are time slots for.
+ */
+function cod_schedule_days($node) {
+
+  if(!empty($node->field_dates)) {
+    $tz = $node->field_dates[LANGUAGE_NONE][0]['timezone'];
+
+    $start_time = format_date($node->field_dates[LANGUAGE_NONE][0]['value'], 'custom', 'Y-m-d', $tz);
+    $end_time = format_date($node->field_dates[LANGUAGE_NONE][0]['value2'], 'custom', 'Y-m-d', $tz);
+    $event_start = DateTime::createFromFormat('U', strtotime($start_time));
+    $event_end = DateTime::createFromFormat('U', strtotime($end_time));
+    $event_duration = date_diff($event_start, $event_end);
+    $i = 0;
+    $days = array();
+    while($i <= $event_duration->days) {
+      $days[] = date('Y-m-d', strtotime('+'.$i.' day', $node->field_dates[LANGUAGE_NONE][0]['value']));
+      $i++;
+    }
+    return $days;
+  }
+  else {
+    return array();
+  }
+}
+
+/*
+ * Implements hook_date_format_types()
+ */
+function cod_date_format_types() {
+  return array('cod_time' => t("COD Time"));
+}
+
+/**
+ * Helper function for matching day to URL arguments
+ */
+function cod_schedule_day_url($day) {
+  $day = str_replace(' ','-',$day);
+  $day = str_replace(',','',$day);
+  return strtolower($day);
+}
+
+/**
+ * Implements hook_entity_info().
+ */
+function cod_schedule_entity_info() {
+  $entities['cod_event_room'] = array(
+    'label' => t('Room'),
+    'plural label' => t('Rooms'),
+    'controller class' => 'CodEventRoomController',
+    'label callback' => 'entity_class_label',
+    'entity class' => 'CodEventRoom',
+    'uri callback' => 'entity_class_uri',
+    'base table' => 'cod_event_room',
+    'fieldable' => TRUE,
+    'exportable' => TRUE,
+    'redirect' => FALSE,
+    'entity keys' => array(
+      'id' => 'evtrid',
+      'label' => 'name',
+    ),
+    'module' => 'cod_schedule',
+    'view modes' => array(
+      'default' => array(
+        'label' => 'Default',
+        'custom settings' => TRUE,
+      ),
+    ),
+    'access callback' => 'cod_event_room_access',
+    'bundles' => array(
+      'cod_event_room' => array(
+        'label' => t('Room'),
+        'admin' => array(
+          'path' => 'admin/conference/rooms',
+          'access arguments' => array('administer cod_event_room'),
+        ),
+      ),
+    ),
+    'static cache' => TRUE,
+    'field cache' => TRUE,
+    'admin ui' => array(
+      'path' => 'admin/conference/rooms',
+      'file' => 'schedule.admin.inc',
+      'file path' => drupal_get_path('module', 'cod_schedule') . '/includes',
+      'controller class' => 'CodEventRoomUIController',
+    ),
+  );
+
+  // Time Entity
+  $entities['cod_event_time'] = array(
+    'label' => t('Time'),
+    'plural label' => t('Times'),
+    'controller class' => 'CodEventTimeController',
+    'label callback' => 'entity_class_label',
+    'entity class' => 'CodEventTime',
+    'uri callback' => 'entity_class_uri',
+    'base table' => 'cod_event_time',
+    'fieldable' => TRUE,
+    'exportable' => TRUE,
+    'redirect' => FALSE,
+    'entity keys' => array(
+      'id' => 'evttid',
+      'label' => 'date_label'
+    ),
+    'module' => 'cod_schedule',
+    'view modes' => array(
+      'default' => array(
+        'label' => 'Default',
+        'custom settings' => TRUE,
+      ),
+    ),
+    'access callback' => 'cod_event_time_access',
+    'bundles' => array(
+      'cod_event_time' => array(
+        'label' => t('Time'),
+        'admin' => array(
+          'path' => 'admin/conference/times',
+          'access arguments' => array('administer cod_event_time'),
+        ),
+      ),
+    ),
+    'static cache' => TRUE,
+    'field cache' => TRUE,
+    'admin ui' => array(
+      'path' => 'admin/conference/times',
+      'file' => 'schedule.admin.inc',
+      'file path' => drupal_get_path('module', 'cod_schedule') . '/includes',
+      'controller class' => 'CodEventTimeUIController',
+    ),
+  );
+  return $entities;
+}
+
+/**
+ * Implements hook_field_extra_fields().
+ */
+function cod_schedule_field_extra_fields() {
+  $return['cod_event_room']['cod_event_room'] = array(
+    'form' => array(
+      'name' => array(
+        'label' => t('Room Name'),
+        'description' => t('Name of the room.'),
+        'weight' => -10,
+      ),
+      'capacity' => array(
+        'label' => t('Capacity'),
+        'description' => t('Total person capacity of a room.'),
+        'weight' => 6,
+      ),
+    ),
+  );
+
+  return $return;
+}
+
+/*******************************************************************************
+ ********************************* Room API's **********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for room.
+ */
+function cod_event_room_access($op, $room, $account = NULL, $entity_type = NULL) {
+  global $user;
+
+  if (!isset($account)) {
+    $account = $user;
+  }
+  switch ($op) {
+    case 'create':
+      return user_access('administer cod_event_room', $account)
+          || user_access('create cod_event_room', $account);
+    case 'view':
+      return user_access('administer cod_event_room', $account)
+          || user_access('view cod_event_room', $account);
+    case 'update':
+      return user_access('administer cod_event_room')
+          || user_access('edit any cod_event_room');
+    case 'delete':
+      return user_access('administer cod_event_room')
+          || user_access('edit any cod_event_room');
+  }
+}
+
+/**
+ * Load a room.
+ */
+function cod_event_room_load($evtrid, $reset = FALSE) {
+  $rooms = cod_event_room_load_multiple(array($evtrid), array(), $reset);
+  return reset($rooms);
+}
+
+/**
+ * Load multiple rooms based on certain conditions.
+ */
+function cod_event_room_load_multiple($evtrids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('cod_event_room', $evtrids, $conditions, $reset);
+}
+
+/**
+ * Save room.
+ */
+function cod_event_room_save($room) {
+  entity_save('cod_event_room', $room);
+}
+
+/**
+ * Delete single room.
+ */
+function cod_event_room_delete($room) {
+  entity_delete('cod_event_room', entity_id('cod_event_room' ,$room));
+}
+
+/**
+ * Delete multiple rooms.
+ */
+function cod_event_room_delete_multiple($room_ids) {
+  entity_delete_multiple('cod_event_room', $room_ids);
+}
+
+/**
+ * Gets an array of all rooms, keyed by the name.
+ *
+ * @param string|null $name
+ *   (optional) If set, the room with the given name is returned.
+ */
+function cod_schedule_get_rooms($name = NULL) {
+  $rooms = entity_load_multiple_by_name('cod_event_room', isset($name) ? array($name) : FALSE);
+  return isset($name) ? reset($rooms) : $rooms;
+}
+
+
+/*******************************************************************************
+ ********************************* Time API's **********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for time.
+ */
+function cod_event_time_access($op, $time, $account = NULL, $entity_type = NULL) {
+  global $user;
+
+  if (!isset($account)) {
+    $account = $user;
+  }
+  switch ($op) {
+    case 'create':
+      return user_access('administer cod_event_time', $account)
+          || user_access('create cod_event_time', $account);
+    case 'view':
+      return user_access('administer cod_event_time', $account)
+          || user_access('view cod_event_time', $account);
+    case 'update':
+      return user_access('administer cod_event_time')
+          || user_access('edit any cod_event_time');
+    case 'delete':
+      return user_access('administer cod_event_time')
+          || user_access('edit any cod_event_time');
+  }
+}
+
+/**
+ * Load a time.
+ */
+function cod_event_time_load($evttid, $reset = FALSE) {
+  $times = cod_event_time_load_multiple(array($evttid), array(), $reset);
+  return reset($times);
+}
+
+/**
+ * Load multiple times based on certain conditions.
+ */
+function cod_event_time_load_multiple($evttids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('cod_event_time', $evttids, $conditions, $reset);
+}
+
+/**
+ * Save time.
+ */
+function cod_event_time_save($time) {
+  entity_save('cod_event_time', $time);
+}
+
+/**
+ * Delete single time.
+ */
+function cod_event_time_delete($time) {
+  entity_delete('cod_event_time', entity_id('cod_event_time' ,$time));
+}
+
+/**
+ * Delete multiple times.
+ */
+function cod_event_time_delete_multiple($time_ids) {
+  entity_delete_multiple('cod_event_time', $time_ids);
+}
+
+/**
+ * Gets an array of all times, keyed by the name.
+ *
+ * @param string|null $name
+ *   (optional) If set, the time with the given name is returned.
+ */
+function cod_schedule_get_times($name = NULL) {
+  $times = entity_load_multiple_by_name('cod_event_time', isset($name) ? array($name) : FALSE);
+  return isset($name) ? reset($times) : $times;
+}
+
+/*******************************************************************************
+ ******************************* Schedule API's ********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for schedule page.
+ *
+ * Access is simplified to reflect if a user has access to the timeslots
+ * field on a particular event.
+ */
+function cod_schedule_schedule_access($event) {
+  if (node_access('update', $event)) {
+    $field_name = 'field_event_timeslots';
+    $field = field_info_field($field_name);
+    return field_access('edit', $field, 'node', $event);
+  }
+  return FALSE;
+}
+
+/**
+ * Get timeslots by event, time and room.
+ */
+function cod_schedule_timeslot_load_by_info($time, $room) {
+  $query = new EntityFieldQuery();
+  $result = $query->entityCondition('entity_type', 'field_collection_item')
+    ->propertyCondition('field_name', 'field_event_timeslots')
+    ->propertyCondition('archived', 0)
+    ->fieldCondition('field_timeslot_time', 'target_id', $time)
+    ->fieldCondition('field_timeslot_room', 'target_id', $room)
+    ->execute();
+  if (isset($result['field_collection_item'])) {
+    $ids = array_keys($result['field_collection_item']);
+    $id = reset($ids);
+    return entity_load_single('field_collection_item', $id);
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * implements hook_field_collection_item_update().
+ */
+function cod_schedule_field_collection_item_update(FieldCollectionItemEntity $fci) {
+  // If a timeslot has changed, clear the cache.
+  if ($fci->field_name == 'field_event_timeslots'
+    && ($fci->field_timeslot_allowed_types !== $fci->original->field_timeslot_allowed_types
+    || $fci->field_timeslot_room !== $fci->original->field_timeslot_room
+    || $fci->field_timeslot_time !== $fci->original->field_timeslot_time)
+    && isset($fci->original->field_timeslot_room[LANGUAGE_NONE])
+    && isset($fci->original->field_timeslot_time[LANGUAGE_NONE])) {
+
+    foreach ($fci->original->field_timeslot_time[LANGUAGE_NONE] as $time) {
+      foreach ($fci->original->field_timeslot_room[LANGUAGE_NONE] as $room) {
+        $cid = 'cod_schedule:schedule_grid_item:' . $time['target_id'] . ':' . $room['target_id'];
+        cache_clear_all($cid, 'cache');
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_cod_event_ajax_elements().
+ */
+function cod_schedule_cod_event_ajax_elements($form, $nid, $fieldgroup = NULL) {
+  // Get the applicable terms for this event.
+  if($fieldgroup == 'field_session_details') {
+    $display_name = 'entityreference_1';
+    $args = array($nid, 'session');
+    $view = views_get_view('cod_schedule_timeslot_widget');
+
+    $view->set_display($display_name);
+
+    // Make sure the query is not cached.
+    $view->is_cacheable = FALSE;
+
+    // Pass options to the display handler to make them available later.
+    $entityreference_options = array(
+      'match' => NULL,
+      'match_operator' => 'CONTAINS',
+      'limit' => 0,
+      'ids' => NULL,
+    );
+    $view->display_handler->set_option('entityreference_options', $entityreference_options);
+    $results = $view->execute_display($display_name, $args);
+
+    if($results) {
+      $form['field_session_timeslot'][LANGUAGE_NONE]['#options'] = array_merge($form['field_session_timeslot'][LANGUAGE_NONE]['#options'], $results);
+    }
+    return array(ajax_command_replace('#field-cod-session-timeslot', drupal_render($form['field_session_timeslot'])));
+  }
+}
+
+function cod_schedule_custom_theme() {
+  if (arg(3) == 'sessions' && arg(4) == 'sign') {
+    $path = drupal_get_path('module', 'cod_session');
+    drupal_add_css($path . '/css/sign-style.css');
+    return 'seven';
+  }
+}

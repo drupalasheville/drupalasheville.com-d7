@@ -1,0 +1,69 @@
+<?php
+/**
+ * @file
+ * Code for the COD Base feature.
+ */
+
+include_once('cod_base.features.inc');
+
+
+/**
+ * Implements hook_menu().
+ */
+function cod_base_menu() {
+  $items = array();
+
+  // Top level "Store" container.
+  $items['admin/conference'] = array(
+    'title' => 'Conference',
+    'description' => 'Administer your conference.',
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('access administration pages'),
+    'file path' => drupal_get_path('module', 'system'),
+    'file' => 'system.admin.inc',
+    'weight' => -7,
+  );
+  $items['admin/conference/config'] = array(
+    'title' => 'Configuration',
+    'description' => 'Configure settings and business rules for your conference.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cod_base_admin_settings'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+    'weight' => 50,
+    'file path' => drupal_get_path('module', 'system'),
+    'file' => 'system.admin.inc',
+  );
+
+  return $items;
+}
+
+function cod_base_admin_settings() {
+  $form = array();
+
+  $form['cod_base_default'] = array(
+    '#markup' => 'Conference organizing settings page',
+  );
+
+  return system_settings_form($form);
+}
+
+/**
+ * Implements hook_date_format_types().
+ */
+function cod_base_date_format_types() {
+  $format_types = array();
+  // Exported date format type: date_no_time
+  $format_types['date_no_time'] = 'Date (no time)';
+  return $format_types;
+}
+
+/**
+* Implements hook_entity_info_alter().
+*/
+function cod_base_entity_info_alter(&$entity_info) {
+  $entity_info['node']['view modes']['listing'] = array(
+    'label' => t('Listing'),
+    'custom settings' => TRUE,
+  );
+}

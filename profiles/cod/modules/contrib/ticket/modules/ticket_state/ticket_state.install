@@ -1,0 +1,182 @@
+<?php
+/**
+ * @file
+ * Ticket state Install file.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function ticket_state_schema() {
+  $schema = array();
+
+  $schema['ticket_state'] = array(
+    'description' => 'Stores ticket registration states.',
+    'fields' => array(
+      'tsid' => array(
+        'description' => 'Ticket registration state ID.',
+        'type' => 'serial',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The registration state machine name.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+      ),
+      'label' => array(
+        'description' => 'The registration state label.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+      ),
+      'description' => array(
+        'description' => 'An expanded description of the registration state.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+      'weight' => array(
+        'description' => 'The weight of the registration state. Used to control the workflow.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'module' => array(
+        'description' => 'The module that provided the registration state.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+      'active' => array(
+        'description' => 'The enabled/disabled status of this ticket registration state.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'size' => 'tiny',
+        'default' => 0,
+      ),
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+        // not safe to use it at this point.
+        'default' => 0x01,
+        'size' => 'tiny',
+        'description' => 'The exportable status of the entity.',
+      ),
+    ),
+    'primary key' => array('tsid'),
+    'indexes' => array(
+      'ticket_state_name' => array('name'),
+    ),
+    'unique keys' => array(
+      'name' => array('name'),
+    ),
+  );
+
+  // Create cache bins for Entity-cache module.
+  $cache_schema = drupal_get_schema_unprocessed('system', 'cache');
+
+  $schema['cache_entity_ticket_state'] = $cache_schema;
+  $schema['cache_entity_ticket_state']['description'] = 'Cache table used to store ticket_state entity records.';
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function ticket_state_install() {
+  // Add fields to the ticket type entity.
+  field_cache_clear();
+  field_associate_fields('ticket_state');
+
+  // Generate a field base we can use for ticket type defaults and
+  // registrations.
+  if (!$field_base = field_info_field(TICKET_STATE_FIELD)) {
+    $field_base = array(
+      'field_name' => TICKET_STATE_FIELD,
+      'type' => 'entityreference',
+      'settings' => array(
+        'target_type' => 'ticket_state',
+        'handler' => 'base',
+        'handler_settings' => array(
+          'sort' => array(
+            'type' => 'property',
+            'property' => 'weight',
+            'direction' => 'ASC',
+          ),
+        ),
+      ),
+    );
+    field_create_field($field_base);
+  }
+}
+
+/**
+ * Update ticket state forms to reflect refactor based on entity registration.
+ */
+function ticket_state_update_7001(&$sandbox) {
+  db_drop_index('ticket_state', 'weight');
+  db_drop_index('ticket_state', 'changed');
+
+  db_add_field('ticket_state', 'default_state', array(
+    'description' => 'A boolean indicating default ticket state.',
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+  ));
+
+  db_change_field('ticket_state', 'status', 'active', array(
+    'description' => 'The enabled/disabled status of this ticket registration state.',
+    'type' => 'int',
+    'not null' => TRUE,
+    'unsigned' => TRUE,
+    'size' => 'tiny',
+    'default' => 0,
+  ));
+
+  db_add_field('ticket_state', 'show_on_form', array(
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+    'size' => 'tiny',
+    'description' => 'A flag showing if this ticket state should be shown on the registration form.',
+  ));
+
+  db_add_field('ticket_state', 'status', array(
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0x01,
+    'size' => 'tiny',
+    'description' => 'The exportable status of the entity.',
+  ));
+
+  db_add_index('ticket_state', 'ticket_state_name', array('name'));
+  db_add_index('ticket_state', 'ticket_state_default_state', array('default_state'));
+
+  db_drop_field('ticket_state', 'changed');
+  db_drop_field('ticket_state', 'created');
+}
+
+/**
+ * Add a registration state name field.
+ */
+function ticket_state_update_7002(&$sandbox) {
+  db_add_field('ticket_registration', 'state', array(
+    'description' => 'The {registration_state}.name of this registration.',
+    'type' => 'varchar',
+    'length' => 32,
+    'not null' => TRUE,
+    'default' => '',
+  ));
+}
+
+/**
+ * Remove fields from abandoned refactor. :P
+ */
+function ticket_state_update_7003(&$sandbox) {
+  db_drop_index('ticket_state', 'ticket_state_default_state');
+  db_drop_field('ticket_state', 'default_state');
+  db_drop_field('ticket_state', 'show_on_form');
+}

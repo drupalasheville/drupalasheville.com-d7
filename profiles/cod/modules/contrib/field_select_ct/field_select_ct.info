@@ -1,0 +1,12 @@
+name = Select CT Field
+description = Field to select CTs dynamically.
+package = Fields
+core = 7.x
+dependencies[] = field
+dependencies[] = options
+; Information added by drupal.org packaging script on 2012-10-20
+version = "7.x-1.0-alpha1"
+core = "7.x"
+project = "field_select_ct"
+datestamp = "1350768418"
+

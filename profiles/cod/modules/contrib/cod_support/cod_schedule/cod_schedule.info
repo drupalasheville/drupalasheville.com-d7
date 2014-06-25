@@ -1,0 +1,51 @@
+name = COD Schedule
+core = 7.x
+package = COD
+dependencies[] = cod_events
+dependencies[] = cod_session
+dependencies[] = ctools
+dependencies[] = field_collection
+dependencies[] = number
+dependencies[] = quicktabs
+dependencies[] = views
+dependencies[] = views_json
+features[ctools][] = views:views_default:3.0
+features[features_api][] = api:2
+features[field_base][] = field_event_timeslots
+features[field_base][] = field_evttime_date
+features[field_base][] = field_session_timeslot
+features[field_base][] = field_timeslot_allowed_types
+features[field_base][] = field_timeslot_room
+features[field_base][] = field_timeslot_time
+features[field_instance][] = cod_event_room-cod_event_room-og_group_ref
+features[field_instance][] = cod_event_time-cod_event_time-field_evttime_date
+features[field_instance][] = cod_event_time-cod_event_time-og_group_ref
+features[field_instance][] = field_collection_item-field_event_timeslots-field_timeslot_allowed_types
+features[field_instance][] = field_collection_item-field_event_timeslots-field_timeslot_room
+features[field_instance][] = field_collection_item-field_event_timeslots-field_timeslot_time
+features[field_instance][] = node-event-field_event_timeslots
+features[field_instance][] = node-schedule_item-field_session_timeslot
+features[field_instance][] = node-session-field_session_timeslot
+features[og_features_permission][] = node:event:administer cod_event_room
+features[og_features_permission][] = node:event:administer cod_event_time
+features[og_features_permission][] = node:event:create cod_event_room
+features[og_features_permission][] = node:event:create cod_event_time
+features[og_features_permission][] = node:event:edit any cod_event_room
+features[og_features_permission][] = node:event:edit any cod_event_time
+features[og_features_permission][] = node:event:edit own cod_event_room
+features[og_features_permission][] = node:event:edit own cod_event_time
+features[og_features_permission][] = node:event:view cod_event_room
+features[og_features_permission][] = node:event:view cod_event_time
+features[views_view][] = cod_event_rooms
+features[views_view][] = cod_schedule
+features[views_view][] = cod_schedule_content
+features[views_view][] = cod_schedule_timeslot_widget
+files[] = cod_schedule.entity.inc
+
+
+; Information added by drush on 2014-06-01
+version = "7.x-1.0-alpha5+25-dev"
+core = "7.x"
+project = "cod_support"
+datestamp = "1401655221"
+

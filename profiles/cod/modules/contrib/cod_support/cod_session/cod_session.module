@@ -1,0 +1,662 @@
+<?php
+/**
+ * @file
+ * Code for the COD Session feature.
+ */
+
+include_once('cod_session.features.inc');
+
+// Define variables values for scheduling content types.
+define('COD_SCHEDULE_SINGLE', 'single');
+define('COD_SCHEDULE_MULTIPLE', 'multiple');
+
+function cod_session_menu() {
+  $items = array();
+
+  $items['node/%node/event/sessions'] = array(
+    'title' => 'Sessions',
+    'type' => MENU_LOCAL_TASK,
+    'page callback' => 'cod_session_admin_page',
+    'page arguments' => array(1),
+    'access callback' => TRUE,
+    'weight' => 0,
+    'file' => 'includes/cod_session.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function cod_session_permission() {
+  $perms = array();
+  /**
+   * Define a custom set of permissions to control content type scheduling. This
+   * gets around CCK Field Permissions because it disallows edit and view should
+   * access check return false. Certain roles should be able to schedule certain
+   * content types and so edit and view of room and time slot nodereference
+   * fields should be allowed for authenticated users and these custom
+   * permissions can disallow.
+   */
+  $types = cod_session_schedulable_types();
+  if (!empty($types)) {
+    foreach ($types as $type => $content_type) {
+      $perms['schedule ' . $type] = array('title' => 'Schedule a ' . $content_type);
+    }
+  }
+  return $perms;
+}
+
+/**
+ * Helper function to determine content types with room and time slot fields.
+ */
+function cod_session_schedulable_types() {
+  $schedulable_types = array();
+  $types = node_type_get_types();
+  foreach ($types as $type => $content_type) {
+    $bundle = field_info_instances('node', $type);
+    if (isset($bundle['field_session_room']) && isset($bundle['field_session_slot'])) {
+      $schedulable_types[$type] = $content_type->name;
+    }
+  }
+  return $schedulable_types;
+}
+
+/**
+ * Implements hook_field_access().
+ */
+function cod_session_field_access($op, $field, $entity_type, $entity, $account) {
+  // Only check access if working on an entity.
+  if (isset($entity) && ($field['field_name'] == 'field_session_room' || $field['field_name'] == 'field_session_slot')) {
+    switch ($op) {
+      case 'edit':
+        // Respect custom schedule permission.
+        if (!user_access('schedule ' . $entity->type, $account)) {
+          return FALSE;
+        }
+    }
+    return TRUE;
+  }
+}
+
+/**
+ * Implements hook_event_entity_integration.
+ */
+function cod_session_event_entity_integration() {
+  return array(
+    'node' => array(
+      'session' => array(
+        'non_member' => TRUE,
+      ),
+      'schedule_item' => array(
+        'non_member' => TRUE,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu_alter().
+ * TODO: Implement a way to filter out og_vocab terms from global taxonomy.
+ function cod_session_menu_alter(&$items) {
+  foreach($items AS $path => $item) {
+    if(strpos($path, 'session_tracks')) {
+      $items['admin/structure/taxonomy/session_tracks']['access callback'] = FALSE;
+    }
+  }
+}
+ */
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function cod_session_form_field_ui_field_edit_form_alter(&$form, &$form_state) {
+  $field_name = 'field_accepted';
+  $field = $form['#field'];
+
+  if ($field['field_name'] == $field_name) {
+    $form_field = &$form['field'];
+    $form_field['cod_declined_msg'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Declined message'),
+      '#description' => t('Display a message that a session was declined. Leave empty if you prefer to not display any notice. '),
+      '#default_value' => variable_get('cod_declined_msg_' . $form['#instance']['bundle'], t('This session has been declined by the session moderation team.')),
+    );
+
+    $form['#submit'][] = 'cod_session_save_declined_message';
+  }
+}
+
+/**
+ * Function to save 'Declined message'.
+ */
+function cod_session_save_declined_message(&$form, &$form_state) {
+  variable_set('cod_declined_msg_' . $form['#instance']['bundle'], $form_state['values']['field']['cod_declined_msg']);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function cod_session_form_session_node_form_alter(&$form, &$form_state, $form_id) {
+  // Prepopulate the current user into the Speakers field
+  // on new session creation.
+
+  if (isset($form['field_speakers'])) {
+    // Form tweaks for the Speakers field:
+    $form['field_speakers'][LANGUAGE_NONE]['add_more']['#value'] = t('Add another speaker');
+    // Prepopulate the current user into the Speakers field
+    // on new session creation.
+    if (empty($form['#node']->nid)) {
+      global $user;
+      $form['field_speakers'][LANGUAGE_NONE][0]['target_id']['#default_value'] = "$user->name ($user->uid)";
+    }
+  }
+
+  if (isset($form['field_accepted']) && !user_access('edit any session content')) {
+    $form['field_accepted']['#access'] = FALSE;
+  }
+
+  // Sessions can only belong to one event.
+  if(isset($form['og_group_ref'])) {
+    $form['og_group_ref'][LANGUAGE_NONE][0]['default']['#multiple'] = FALSE;
+  }
+
+  /*
+  if (isset($form['field_session_timeslot']) && !user_access('edit any session content')) {
+    unset($form['field_session_timeslot']);
+    unset($form['#fieldgroups']['group_schedule']);
+    $form['#validate'][] = 'cod_session_session_node_form_validate';
+  }
+*/
+  // Make the session track and timeslot fields conditional on the event field.
+  $form['og_vocabulary']['#states'] = array(
+    'visible' => array(
+      'xor',
+      array(':input[name="og_group_ref[und][0][default]"]' => array('!value' => '_none')),
+      // This sort of works, but would be better if it fired after
+      // the autocomplete. Note that this field is only available
+      // to administrators.
+      array(':input[name="og_group_ref[und][0][admin][0][target_id]"]' => array('empty' => FALSE)),
+    ),
+  );
+
+  $form['field_session_timeslot']['#states'] = array(
+    'visible' => array(
+      'xor',
+      array(':input[name="og_group_ref[und][0][default]"]' => array('!value' => '_none')),
+      // This sort of works, but would be better if it fired after
+      // the autocomplete. Note that this field is only available
+      // to administrators.
+      array(':input[name="og_group_ref[und][0][admin][0][target_id]"]' => array('empty' => FALSE)),
+    ),
+  );
+
+  // Make the level field filtered on the event field.
+  $form['og_group_ref'][LANGUAGE_NONE][0]['default']['#ajax'] = array(
+    'callback' => 'cod_session_events_filter',
+    'wrapper' => 'field-cod-events-filter',
+    'method' => 'replace',
+  );
+  $form['og_vocabulary']['#validated'] = TRUE;
+
+  $form['og_group_ref']['#prefix'] = '<div id="field-cod-events-filter">';
+  $form['og_group_ref']['#suffix'] = '</div>';
+
+  $form['og_vocabulary']['#prefix'] = '<div id="field-cod-session-og-vocabulary">';
+  $form['og_vocabulary']['#suffix'] = '</div>';
+
+
+  $form['field_session_timeslot']['#prefix'] = '<div id="field-cod-session-timeslot">';
+  $form['field_session_timeslot']['#suffix'] = '</div>';
+
+  // Add form state to only show tracks for the the selected event.
+  if (isset($form['og_vocabulary'][LANGUAGE_NONE][0]) && isset($form['og_group_ref'])) {
+    foreach ($form['og_vocabulary'][LANGUAGE_NONE][0] as &$event_vocab) {
+      if (is_array($event_vocab) && isset($event_vocab['#og_vocab'])) {
+        $event_vocab['#states'] = array(
+          'visible' => array(
+            ':input[name^="og_group_ref[und][0][default]"]' => array(
+              'value' => $event_vocab['#og_vocab']->id,
+            ),
+          ),
+        );
+      }
+    }
+  }
+}
+
+
+/**
+ * Event (og_group_ref) ajax callback.
+ */
+function cod_session_events_filter($form, &$form_state) {
+
+  if (isset($form_state['values']['og_group_ref']) &&
+      isset($form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['default']) &&
+      $form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['default'] == '_none') {
+    return;
+  }
+  // Get the event node id.
+  $nid = FALSE;
+  if (isset($form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['target_id']) && is_numeric($form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['target_id'])) {
+    $nid = $form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['target_id'];
+  }
+  elseif (isset($form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['admin'][0]['target_id']) && is_numeric($form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['admin'][0]['target_id'])) {
+    $nid = $form_state['values']['og_group_ref'][LANGUAGE_NONE][0]['admin'][0]['target_id'];
+  }
+
+  if ($nid) {
+    $commands = module_invoke_all('cod_event_ajax_elements', $form, $nid, 'field_session_details');
+    return array('#type' => 'ajax', '#commands' => $commands);
+  }
+
+  return;
+}
+
+/**
+ * Implements hook_cod_event_ajax_elements().
+ */
+function cod_session_cod_event_ajax_elements($form, $nid, $fieldgroup = NULL) {
+  // Get the applicable terms for this event.
+  if($fieldgroup == 'field_session_details') {
+    $vocab = taxonomy_vocabulary_machine_name_load('session_tracks_' . $nid);
+
+    $query = db_select('og_vocab_relation', 'ovr');
+    $query->join('taxonomy_term_data', 'ttd', "ttd.vid = ovr.vid");
+    $results = $query->fields('ttd', array('tid'))
+      ->condition('ovr.gid', $nid)
+      ->condition('ovr.vid', $vocab->vid)
+      ->execute()
+      ->fetchCol();
+    $results['_none'] = 0;
+
+    if (!isset($form['og_vocabulary'][LANGUAGE_NONE]['#options'])) {
+      $form['og_vocabulary'][LANGUAGE_NONE]['#options'] = array();
+    }
+    else {
+      // Flatten the options into a single dimension array.
+      $return = array();
+      array_walk_recursive($form['og_vocabulary'][LANGUAGE_NONE]['#options'], '_cod_session_ajax_elements_options', $return);
+    }
+    $form['og_vocabulary'][LANGUAGE_NONE]['#options'] = array_intersect_key($return, array_flip($results));
+
+    return array(ajax_command_replace("#field-cod-session-og-vocabulary", drupal_render($form['og_vocabulary'])));
+  }
+}
+
+function _cod_session_ajax_elements_options($item, $key, &$return) {
+  $return[] = $item;
+}
+
+function _cod_session_tids($item, $key) {
+  return array($key => $item);
+}
+
+/*
+ * Make the event dashboard be an admin path
+ */
+function cod_session_admin_paths() {
+  $paths = array(
+    'node/*/edit/*' => TRUE,
+  );
+  return $paths;
+}
+
+/**
+ * Implements hook_quicktabs_alter().
+ * Dynamically change which tab is default based on workflow of the event.
+ */
+function cod_session_quicktabs_alter(&$quicktabs) {
+  if ($quicktabs->machine_name == 'sessions' && $event = node_load(arg(1))) {
+    $quicktabs->default_tab = $event->field_event_default_session_view[LANGUAGE_NONE][0]['value'];
+  }
+}
+
+/**
+ * Impliments hook_form().
+ * TODO: Incomplete, needs work.
+ */
+function cod_session_details_form($form, &$form_state, $event) {
+  module_load_include('inc', 'node', 'node.pages');
+  // Session Settings
+  $fields = array();
+  $node_form = node_page_edit($event);
+  // Build the Sessions form
+  field_attach_form('node', $event, $fields, $form_state, entity_language('node', $event));
+  $form['#fieldgroups']['group_event_sessions'] = $fields['#fieldgroups']['group_event_sessions'];
+  foreach($form['#fieldgroups']['group_event_sessions']->children as $session_field) {
+    $form[$session_field] = $node_form[$session_field];
+  }
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Save Session Details',
+    '#weight' => 999,
+  );
+  return $form;
+}
+
+/**
+ * @param $form
+ * @param $form_state
+ * * TODO: Incomplete, needs work.
+ */
+function cod_session_details_form_submit(&$form, &$form_state) {
+  //dpm($form_state);
+}
+/**
+ * Implements hook_form_alter().
+ */
+function cod_session_form_alter(&$form, &$form_state, $form_id) {
+  // @todo consider altering user_admin_perm form to disable editing
+  // of edit slot and room permissions?
+  if (strpos($form_id, '_node_form') !== FALSE) {
+    $types = cod_session_schedulable_types();
+    if (empty($types)) {
+      return;
+    }
+  }
+}
+
+function cod_session_session_node_form_validate($form, &$form_state) {
+  if(empty($form_state['values']['field_session_timeslot'])) {
+    $form_state['values']['field_session_timeslot'] = $form['#node']->field_session_timeslot;
+  }
+}
+/**
+ * Form submit handler for bof node form.
+ */
+function _cod_session_unschedule(&$form, &$form_state) {
+  if ($form_state['values']['op'] == $form_state['values']['cod_unschedule']) {
+    // Unset scheduled room and time slot.
+    $form_state['values']['field_session_room']['und'][0]['target_id'] = NULL;
+    $form_state['values']['field_session_slot']['und'][0]['target_id'] = NULL;
+    drupal_set_message(t('%name has been unscheduled. To reshedule, click "Schedule a session" on any available time slot.', array('%name' => $form_state['values']['title'])));
+    // @todo set redirect?
+  }
+}
+
+/**
+ * Get schedulable content created by a user.
+ *
+ * @param object $account
+ *  Account to retrieve content for.
+ * @param string $type
+ *  Content type to search for.
+ * @param boolean $unscheduled
+ *  Whether to return all BoFs or just those unscheduled.
+ * @return array
+ *  Array of BoF nodes or empty.
+ */
+function cod_session_users_content($account, $type, $unscheduled = FALSE) {
+  $bofs = array();
+
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+  ->entityCondition('bundle', $type)
+  ->propertyCondition('status', 1)
+  ->propertyCondition('uid', $account->uid);
+  if ($unscheduled) {
+    // @todo possible to use fieldCondition somehow?
+    //$query->fieldCondition('field_session_room', 'nid', 'NULL', '!=')
+      //->fieldCondition('field_session_slot', 'nid', 'NULL', '!=');
+  }
+  $result = $query->execute();
+  if (isset($result['node'])) {
+    $nids = array_keys($result['node']);
+    $bofs = entity_load('node', $nids);
+  }
+  if ($unscheduled) {
+    $hold = array();
+    foreach ($bofs as $nid => $bof) {
+      if (empty($bof->field_session_room) && empty($bof->field_session_slot)) {
+        $hold[$nid] = $bof;
+      }
+    }
+    $bofs = $hold;
+  }
+
+  return $bofs;
+}
+
+/**
+ * Submit handler for scheduling form.
+ */
+function cod_session_schedule_form_submit($form, $form_state) {
+  module_load_include('inc', 'node', 'node.pages');
+  // @todo consider whether there should be a
+  // cod_session_schedule_form_validate() with node_validate().
+  $item = node_load($form_state['values']['session'], NULL, TRUE);
+  $item->field_session_slot['und'][0]['target_id'] = $form_state['values']['schedule']['slot']->nid;
+  $item->field_session_room['und'][0]['target_id'] = $form_state['values']['schedule']['room']->nid;
+  $item = node_submit($item);
+  node_save($item);
+}
+
+/**
+ * Implements hook_node_view_alter().
+ */
+function cod_session_node_view_alter(&$build) {
+  global $user;
+  $account = $user;
+  $node = $build['#node'];
+  if ($node->type != 'session') {
+    return;
+  }
+  // Display a message indicating when a session has been declined.
+  if ($node->type == 'session' && $build['#view_mode'] == 'full'  && cod_session_is_declined($node)) {
+    $msg = check_plain(variable_get('cod_declined_msg_' . $build['#bundle'], t('This session has been declined by the session moderation team.')));
+    if ($output = theme('cod_session_declined_msg', array('msg' => $msg))) {
+      if (isset($build['body'][0]['#markup'])) {
+        $build['body'][0]['#markup'] = $output . $build['body'][0]['#markup'];
+      }
+      else {
+        $build['body'][0]['#markup'] = $output;
+      }
+    }
+  }
+
+  // Display the presenter confirmation link when a session is
+  // accepted and scheduled.
+  if (!cod_session_is_scheduled($node) || !cod_session_is_accepted($node) || !cod_session_user_is_speaker($account->uid, $node)) {
+    unset($build['links']['flag']['#links']['flag-session_confirm']);
+  }
+
+}
+
+/**
+* Helper function to determine if a session has been scheduled (assigned a
+* room and time-slot combination)
+*/
+
+function cod_session_is_scheduled($node) {
+  return !empty($node->field_session_room) && !empty($node->field_session_slot);
+}
+
+/**
+* Helper function to determine whether a session is accepted.
+*/
+function cod_session_is_accepted($node) {
+  if(isset($node->field_accepted[LANGUAGE_NONE])) {
+    return $node->field_accepted[LANGUAGE_NONE][0]['value'] == 1;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+* Helper function to determine whether a session is declined.
+*/
+function cod_session_is_declined($node) {
+  if(isset($node->field_accepted[LANGUAGE_NONE])) {
+    return $node->field_accepted[LANGUAGE_NONE][0]['value'] == 2;
+  }
+  else {
+    return FALSE;
+  }
+}
+/**
+ * Helper function to determien whether a given user is a speaker on a session.
+ */
+
+function cod_session_user_is_speaker($uid, $node) {
+  if (empty($node->field_speakers)) {
+    return FALSE;
+  }
+  foreach($node->field_speakers[LANGUAGE_NONE] as $speaker) {
+    if ($speaker['target_id'] == $uid)  {
+      return TRUE;
+    }
+  }
+}
+/**
+ * Implements hook_node_presave().
+ */
+function cod_session_node_presave($node) {
+  if (!empty($node->field_session_slot[LANGUAGE_NONE][0]['nid']) && !empty($node->field_session_room[LANGUAGE_NONE][0]['nid'])) {
+    $room = node_load($node->field_session_room[LANGUAGE_NONE][0]['nid']);
+    $slot = node_load($node->field_session_slot[LANGUAGE_NONE][0]['nid']);
+    drupal_set_message(t('%name is scheduled for @slot in @room', array('%name' => $node->title, '@slot' => $slot->title, '@room' => $room->title)));
+  }
+}
+
+/**
+ * Implements hook_entity_insert().
+ *
+ * Using entity_insert to ensure it runs after node_insert.
+ * There seemed to be some issues in running during nod_insert.
+ */
+function cod_session_entity_insert($entity, $type) {
+  // Whenever an event is created, generate the Tracks OG vocab.
+  if (og_is_group($type, $entity)) {
+    list($entity_id, $revision_id, $bundle) = entity_extract_ids($type, $entity);
+
+    if ($type == 'node' && $bundle == 'event') {
+      $machine_name = 'session_tracks_' . $entity_id;
+
+      if (!$vocab = taxonomy_vocabulary_machine_name_load($machine_name)) {
+        // Create a new tracks vocab for this event.
+        $vocab = new stdClass();
+        $vocab->name = t('Session Tracks (@event)', array('@event' => $entity->title));
+        $vocab->description = t('Tracks organize @event sessions by topic.', array('@event' => $entity->title));
+        $vocab->machine_name = $machine_name;
+        $vocab->hierarchy = 0;
+        taxonomy_vocabulary_save($vocab);
+      }
+
+      // Add the og relationship.
+      og_vocab_relation_save($vocab->vid, $type, $entity_id);
+
+      // Setup the field.
+      $og_vocab = og_vocab_create_og_vocab($vocab->vid, 'node', 'session');
+      $og_vocab->save();
+    }
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function cod_session_theme($existing, $type, $theme, $path) {
+  return array(
+    'cod_session_schedule' => array(
+      'variables' => array('view' => NULL, 'options' => NULL, 'rows' => NULL, 'title' => NULL),
+      'template' => 'cod-session-schedule',
+    ),
+    'cod_session_declined_msg' => array(
+      'render element' => 'msg',
+    ),
+    'cod_session_scheduler_form' => array(
+  		'render element' => 'form'
+  	),
+  );
+}
+
+/**
+ * Theme function to render the "Declined message".
+ */
+function theme_cod_session_declined_msg($variables) {
+  $message = $variables['msg'];
+  return '<div class="messages session-declined">' . $message . '</div>';
+}
+
+/**
+ * Recursive ksort.
+ */
+function cod_session_ksort_recurse(&$array) {
+  ksort($array);
+  foreach (array_keys($array) as $key) {
+    if (is_array($array[$key])) {
+      cod_session_ksort_recurse($array[$key]);
+      ksort($array[$key]);
+    }
+    else {
+      return;
+    }
+  }
+}
+
+/**
+ * @TODO: This function needs to be upgraded to D7.
+ *
+ * Create array of machine-readable keys.
+ */
+function _cod_session_machine_keys($prefix, $keys) {
+  $machine_keys = array();
+  foreach ($keys as $index => $key) {
+    $machine_key_raw = trim(preg_replace('/_+/', '_', preg_replace('/[^a-z0-9]+/', '_', drupal_strtolower($key))), '_');
+    if ($machine_key_raw == '') {
+      $machine_key_raw = $index;
+    }
+    $machine_key = $prefix . '-' . $machine_key_raw;
+    if (in_array($machine_key, $machine_keys)) {
+      $machine_key .= '-' . $index;
+    }
+    $machine_keys[$index] = $machine_key;
+  }
+  return $machine_keys;
+}
+
+/**
+ * Helper function computes time slot range.
+ *
+ * @param object Time slot node.
+ * @return array Array of start and end times.
+ */
+function cod_session_time_slot_format($slot) {
+  static $ranges = array();
+  if (!isset($ranges[$slot->nid])) {
+    $date_start = new DateObject($slot->field_slot_datetime[LANGUAGE_NONE][0]['value'], $slot->field_slot_datetime[LANGUAGE_NONE][0]['timezone_db']);
+    $date_end = new DateObject($slot->field_slot_datetime[LANGUAGE_NONE][0]['value2'], $slot->field_slot_datetime[LANGUAGE_NONE][0]['timezone_db']);
+    date_timezone_set($date_start, timezone_open($slot->field_slot_datetime[LANGUAGE_NONE][0]['timezone']));
+    date_timezone_set($date_end, timezone_open($slot->field_slot_datetime[LANGUAGE_NONE][0]['timezone']));
+    $day = date_format_date($date_start, 'custom', 'F j');
+    $start = date_format_date($date_start, 'custom', 'g:iA');
+    $end = date_format_date($date_end, 'custom', 'g:iA');
+    $ranges[$slot->nid] = array(
+      'day' => $day,
+      'formatted_start' => $start,
+      'formatted_end' => $end,
+      'date_start' => $date_start,
+      'date_end' => $date_end,
+    );
+  }
+  return $ranges[$slot->nid];
+}
+
+/**
+ * Title callback.
+ */
+function _cod_session_scheduler_title($type) {
+  $type_info = node_type_get_type($type);
+  return t('Schedule a @name', array('@name' => $type_info->name));
+}
+
+function cod_session_custom_theme() {
+  if (arg(4) == 'sessions' && arg(5) == 'sign') {
+    $path = drupal_get_path('module', 'cod_session');
+    drupal_add_css($path . '/css/sign-style.css');
+    return 'seven';
+  }
+}

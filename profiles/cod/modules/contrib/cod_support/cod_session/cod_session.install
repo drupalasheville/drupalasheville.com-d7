@@ -1,0 +1,63 @@
+<?php
+
+/**
+ * Remove legacy views from the database.
+ */
+function cod_session_update_7001() {
+  // Remove legacy views:
+  $views = array('cod_session_schedule', 'cod_session_schedule_entity', 'my_presentations');
+
+  foreach ($views as $view_name) {
+    if ($view = views_get_view($view_name)) {
+      $view->delete(TRUE);
+    }
+  }
+
+  $revert = array(
+    'cod_session' => array('field_base', 'field_instance', 'views_view'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+/**
+ * Enable the OG Vocabulary (for session tracks) module.
+ */
+function cod_session_update_7002() {
+  $module_list = array('og_vocab');
+  module_enable($module_list);
+  return array();
+}
+
+/**
+ * Revert session features that use new flag3 API
+ */
+function cod_session_update_7003() {
+  $revert = array(
+    'cod_events' => array('flag', 'views_view'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+/**
+ * Revert session features to include new featured and default session tab
+ */
+function cod_session_update_7004() {
+  $revert = array(
+    'cod_events' => array('field_base', 'field_instance', 'field_group'),
+  );
+  features_revert($revert);
+
+  return array();
+}
+
+/**
+ * Enable cod_session_pages
+ */
+function cod_session_update_7005() {
+  module_enable(array('cod_session_pages'));
+  return array();
+}

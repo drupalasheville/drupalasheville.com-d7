@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the COD Session Pages feature.
+ */
+
+include_once 'cod_session_pages.features.inc';

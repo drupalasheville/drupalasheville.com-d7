@@ -1,0 +1,58 @@
+<?php
+
+/**
+ * Move user profile field data from one field to another. Cron must run after to fully remove field
+ */
+function cod_profile_base_update_7004() {
+
+  $query = new EntityFieldQuery();
+
+  $users = $query->entityCondition('entity_type', 'user')
+    ->propertyCondition('uid', 0, '>')
+    ->execute();
+
+  $delete_is_safe = FALSE;
+  foreach($users['user'] AS $user_id => $user_data) {
+    $entity = entity_load_single('user', $user_id);
+    $user_wrapper = entity_metadata_wrapper('user', $entity);
+    if(isset($user_wrapper->field_name_first)) {
+      if($user_wrapper->field_profile_first->value() == '') {
+        $user_wrapper->field_profile_first->set($user_wrapper->field_name_first->value());
+      }
+      $first_name = $user_wrapper->field_profile_first->value();
+    }
+    if(isset($user_wrapper->field_name_last)) {
+      if($user_wrapper->field_profile_last->value() == '') {
+        $user_wrapper->field_profile_last->set($user_wrapper->field_name_last->value());
+      }
+      $last_name = $user_wrapper->field_profile_last->value();
+    }
+    if(isset($user_wrapper->field_bio)) {
+      if($user_wrapper->field_profile_bio->value() == '') {
+        $user_wrapper->field_profile_bio->set($user_wrapper->field_bio->value());
+      }
+      $field_bio = $user_wrapper->field_profile_bio->value();
+    }
+    if(!empty($first_name) || !empty($last_name) || !empty($field_bio)) {
+      $delete_is_safe = TRUE;
+    }
+    $user_wrapper->save();
+  }
+  if($delete_is_safe) {
+    field_delete_field('field_name_first');
+    field_delete_field('field_name_last');
+    field_delete_field('field_bio');
+  }
+}
+
+/**
+ * Revert cod_profile_base features that have small tweaks
+ */
+function cod_profile_base_update_7005() {
+  $revert = array(
+    'cod_events' => array('field_base', 'field_instance', 'variable'),
+  );
+  features_revert($revert);
+
+  return array();
+}

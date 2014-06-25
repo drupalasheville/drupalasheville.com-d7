@@ -1,0 +1,9 @@
+<?php
+
+/**
+ * Enable the views_json module.
+ */
+function cod_schedule_update_7001() {
+  module_enable(array('views_json'));
+  return array();
+}

@@ -1,0 +1,42 @@
+name = COD Profile Base
+description = Provides a base set of profile fields for user profiles.
+core = 7.x
+package = COD
+project = cod_profile_base
+dependencies[] = addressfield
+dependencies[] = ctools
+dependencies[] = features
+dependencies[] = strongarm
+dependencies[] = text
+datestamp = 1346372016
+features[ctools][] = strongarm:strongarm:1
+features[features_api][] = api:2
+features[field_base][] = field_profile_bio
+features[field_base][] = field_profile_first
+features[field_base][] = field_profile_interests
+features[field_base][] = field_profile_job_title
+features[field_base][] = field_profile_last
+features[field_base][] = field_profile_location
+features[field_base][] = field_profile_org
+features[field_base][] = field_profile_phone
+features[field_instance][] = user-user-field_profile_bio
+features[field_instance][] = user-user-field_profile_first
+features[field_instance][] = user-user-field_profile_interests
+features[field_instance][] = user-user-field_profile_job_title
+features[field_instance][] = user-user-field_profile_last
+features[field_instance][] = user-user-field_profile_location
+features[field_instance][] = user-user-field_profile_org
+features[field_instance][] = user-user-field_profile_phone
+features[variable][] = realname_pattern
+features[variable][] = user_picture_dimensions
+features[variable][] = user_picture_file_size
+features[variable][] = user_picture_style
+features[variable][] = user_pictures
+
+
+; Information added by drush on 2014-06-01
+version = "7.x-1.0-alpha5+25-dev"
+core = "7.x"
+project = "cod_support"
+datestamp = "1401655221"
+

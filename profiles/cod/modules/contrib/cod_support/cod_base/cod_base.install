@@ -1,0 +1,85 @@
+<?php
+/**
+ * @file
+ * Cod base install file.
+ */
+
+define('COD_BASE_DATE_FORMAT', 'D, j M Y');
+define('COD_BASE_DATE_TYPE', 'date_no_time');
+define('COD_BASE_DATE_TITLE', 'Date (no time)');
+
+/**
+ * Implements hook_enable().
+ */
+function cod_base_install() {
+  db_insert('date_formats')
+    ->fields(array(
+      'format' => COD_BASE_DATE_FORMAT,
+      'type' => COD_BASE_DATE_TYPE,
+      'locked' => 1,
+    ))
+    ->execute();
+
+  variable_set('date_format_date_no_time', COD_BASE_DATE_FORMAT);
+
+  $t = get_t();
+  db_insert('date_format_type')
+    ->fields(array(
+      'type' => COD_BASE_DATE_TYPE,
+      'title' => $t(COD_BASE_DATE_TITLE),
+      'locked' => 1,
+    ))
+    ->execute();
+}
+
+/**
+ * Set a default time formatter.
+ */
+function cod_base_update_7101() {
+  // Delete old date info with trailing underscore.
+  variable_del('date_format_date_no_time_');
+  system_date_format_type_delete('date_no_time_');
+  db_delete('date_formats')
+    ->condition('type', 'date_no_time_', '=')
+    ->execute();
+
+  // Create teh cod base date format if it doesn't exist.
+  if (db_select('date_formats', 'df')
+      ->fields('df')
+      ->condition('format', COD_BASE_DATE_FORMAT, '=')
+      ->condition('type', COD_BASE_DATE_TYPE, '=')
+      ->execute()
+      ->rowCount() == 0) {
+
+    db_insert('date_formats')
+      ->fields(array(
+        'format' => COD_BASE_DATE_FORMAT,
+        'type' => COD_BASE_DATE_TYPE,
+        'locked' => 1,
+      ))
+      ->execute();
+
+    variable_set('date_format_date_no_time', COD_BASE_DATE_FORMAT);
+  }
+
+  // Create the cod base date format type if it doesn't exist.
+  if (db_select('date_format_type', 'dft')
+      ->fields('dft')
+      ->condition('type', COD_BASE_DATE_TYPE, '=')
+      ->execute()
+      ->rowCount() == 0) {
+
+    $t = get_t();
+    db_insert('date_format_type')
+      ->fields(array(
+        'type' => COD_BASE_DATE_TYPE,
+        'title' => $t(COD_BASE_DATE_TITLE),
+        'locked' => 1,
+      ))
+      ->execute();
+  }
+
+  features_revert(array(
+    'cod_base' => array('variable'),
+  ));
+}

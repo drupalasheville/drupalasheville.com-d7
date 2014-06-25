@@ -1,0 +1,39 @@
+/* CSS File for Schedule Sign */
+
+span.field-session-title {
+  font-size: 1.4em;
+}
+
+.breadcrumb {
+  display: none;
+}
+
+#branding {
+  padding: 30px 20px 10px 20px;
+}
+
+#branding h1.page-title {
+  font-size: 2em;
+  margin-left: 20px;
+}
+
+.date-display-single {
+  font-size: 1.4em;
+}
+
+.view-content table {
+  margin-bottom: 20px;
+}
+
+.views-row td {
+  vertical-align: top;
+  width: 9%;
+}
+
+.views-row td a, .views-row td a:link, .views-row td a:visited {
+  color: black;
+}
+
+.views-row td:nth-child(odd) {
+  background-color: #eee;
+}

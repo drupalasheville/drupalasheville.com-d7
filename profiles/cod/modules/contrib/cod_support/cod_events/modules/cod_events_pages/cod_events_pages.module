@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the COD Events Pages feature.
+ */
+
+include_once 'cod_events_pages.features.inc';

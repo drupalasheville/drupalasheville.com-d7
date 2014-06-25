@@ -1,0 +1,29 @@
+name = COD Paid Events
+description = Provides paid events options
+core = 7.x
+package = COD
+project = cod_paid_events
+dependencies[] = cod_events
+dependencies[] = commerce
+dependencies[] = commerce_cart
+dependencies[] = commerce_features
+dependencies[] = commerce_product_reference
+dependencies[] = commerce_product_ui
+dependencies[] = conditional_fields
+dependencies[] = inline_entity_form
+dependencies[] = list
+dependencies[] = ticket
+features[commerce_product_type][] = cod_paid_event
+features[features_api][] = api:2
+features[field_base][] = commerce_price
+features[field_base][] = field_ticket_related_product
+features[field_instance][] = commerce_product-cod_paid_event-commerce_price
+features[field_instance][] = ticket_type-ticket_type-field_ticket_related_product
+
+
+; Information added by drush on 2014-06-01
+version = "7.x-1.0-alpha5+25-dev"
+core = "7.x"
+project = "cod_support"
+datestamp = "1401655221"
+

@@ -1,0 +1,19 @@
+<?php
+
+include_once('cod_paid_events.features.inc');
+
+/*
+ * Form alter for cod registration to add a step to send the registrations to the cart
+ */
+function cod_paid_events_ticket_registered_redirect_alter(&$redirect, &$registrations) {
+  global $user;
+  foreach ($registrations AS $registration) {
+    $ticket_type = $registration->ticket_type();
+    if(!empty($ticket_type->field_ticket_related_product) && $product = commerce_product_load($ticket_type->field_ticket_related_product[LANGUAGE_NONE][0]['product_id'])) {
+      // commerce_cart_order_empty($order);
+      $line_item = commerce_product_line_item_new($product);
+      commerce_cart_product_add($user->uid, $line_item);
+      $redirect = 'checkout';
+    }
+  }
+}
