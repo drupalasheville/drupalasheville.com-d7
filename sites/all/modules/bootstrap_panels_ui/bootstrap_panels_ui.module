@@ -1,0 +1,13 @@
+<?php
+/**
+ * @file bootstrap_panels_ui.module
+ */
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function bootstrap_panels_ui_ctools_plugin_directory($owner, $plugin_type) {
+  if ($plugin_type == 'styles' || $plugin_type == 'layouts'){
+    return "plugins/$plugin_type";
+  }
+}

@@ -1,0 +1,132 @@
+<?php
+
+/**
+ * @file
+ * bootstrapper module
+ *
+ * This module allows styles to be created and managed on behalf of modules
+ * that implement styles.
+ *
+ * The bootstrapper tool allows recolorable styles to be created via a miniature
+ * scripting language. Panels utilizes this to allow administrators to add
+ * styles directly to any panel display.
+ */
+
+/**
+ * Implements hook_permission()
+ */
+function bootstrapper_permission() {
+  return array(
+    'administer bootstrapper' => array(
+      'title' => t("Use the bootstrapper UI"),
+      'description' => t("Allows a user to use the CTools bootstrapper UI."),
+    ),
+  );
+}
+
+ /**
+  * Implements hook_ctools_plugin_directory().
+  */
+function bootstrapper_ctools_plugin_directory($owner, $plugin_type) {
+if($module == 'ctools' && $plugin_type == 'export_ui') {
+    return "includes/$plugin_type";
+ }
+}
+
+/**
+ * Implements hook_ctools_plugin_type() to inform the plugin system that
+ * bootstrapper style_base plugin types.
+ */
+function bootstrapper_ctools_plugin_type() {
+  return array(
+    'style_bases' => array(
+      'load themes' => TRUE,
+    ),
+  )
+}
+
+/**
+ * Implementation of hook_panels_dashboard_blocks().
+ *
+ * Adds page information to the Panels dashboard.
+ */
+function bootstrapper_panels_dashboard_blocks(&$vars) {
+  $vars['links']['bootstrapper'] = array(
+    'title' => l(t('Custom style'), 'admin/structure/bootstrapper/add'),
+    'description' => t('Custom styles can be applied to Panel regions and Panel panes.'),
+  );
+
+   // Load all mini panels and their displays.
+  ctools_include('export');
+  ctools_include('bootstrapper');
+  $items = ctools_export_crud_load_all('bootstrapper');
+  $count = 0;
+  $rows = array();
+
+  $base_types = ctools_get_style_base_types();
+  foreach ($items as $item) {
+    $style = ctools_get_style_base($item->settings['style_base']);
+    if ($style && $style['module'] == 'panels') {
+      $type = $base_types[$style['module']][$style['type']]['title'];
+
+      $rows[] = array(
+        check_plain($item->admin_title),
+        $type,
+        array(
+          'data' => l(t('Edit'), "admin/structure/bootstrapper/list/$item->name/edit"),
+          'class' => 'links',
+        ),
+      );
+
+      // Only show 10.
+      if (++$count >= 10) {
+        break;
+      }
+    }
+  }
+
+  if ($rows) {
+    $content = theme('table', array('rows' => $rows, 'attributes' => array('class' => 'panels-manage')));
+  }
+  else {
+    $content = '<p>' . t('There are no custom styles.') . '</p>';
+  }
+
+  $vars['blocks']['bootstrapper'] = array(
+    'title' => t('Manage styles'),
+    'link' => l(t('Go to list'), 'admin/structure/bootstrapper'),
+    'content' => $content,
+    'class' => 'dashboard-styles',
+    'section' => 'left',
+  );
+}
+
+/**
+ * Implementation of hook_theme to load all content plugins and pass thru if
+ * necessary.
+ */
+function bootstrapper_theme() {
+  $theme = array();
+  ctools_include('bootstrapper');
+  // Register all themes given for basetypes.
+  $plugins = ctools_get_style_bases();
+  $base_types = ctools_get_style_base_types();
+  foreach ($plugins as $plugin) {
+    if (!empty($base_types[$plugin['module']][$plugin['type']]) && !empty($plugin['theme'])) {
+      $base_type = $base_types[$plugin['module']][$plugin['type']];
+      $theme[$plugin['theme']] = array(
+        'variables' => $base_type['theme variables'],
+        'path' => $plugin['path'],
+      );
+
+      // if no theme function exists, assume template.
+      if (!function_exists("theme_$plugin[theme]")) {
+        $theme[$plugin['theme']]['template'] = str_replace('_', '-', $plugin['theme']);
+        $theme[$plugin['theme']]['file'] = $plugin['file']; // for preprocess.
+      }
+    }
+  }
+
+  return $theme;
+}
+

@@ -1,4 +1,4 @@
-name = Drupal Asheville Bootstrap Sub-theme
+name = DrupalAsheville
 description = A Bootstrap Sub-theme.
 core = 7.x
 base theme = bootstrap

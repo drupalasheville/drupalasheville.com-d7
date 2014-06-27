@@ -1,0 +1,11 @@
+name = Bootstrapper
+version = 7.x-3.x-3
+description = A Panels styling tool inspired by stylizer
+
+
+; Information added by Drupal.org packaging script on 2013-12-17
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "bootstrap_panels_ui"
+datestamp = "1387291232"
+
