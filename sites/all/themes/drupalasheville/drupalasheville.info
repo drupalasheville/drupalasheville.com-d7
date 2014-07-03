@@ -9,6 +9,7 @@ base theme = bootstrap
 ;;;;;;;;;;;;;;;;;;;;;
 
 regions[navigation]     = 'Navigation'
+regions[masthead]       = 'Mast Head'
 regions[header]         = 'Top Bar'
 regions[highlighted]    = 'Highlighted'
 regions[help]           = 'Help'
@@ -55,6 +56,7 @@ stylesheets[all][] = css/style.css
 ; ; Disable BootstrapCDN if using Bootstrap source files in your sub-theme.
 ; settings[bootstrap_cdn] = ''
 
+;scripts[] = js/custom-2014.js
 
 ; ;-------------------------
 ; ; METHOD 2: Bootstrap CDN
