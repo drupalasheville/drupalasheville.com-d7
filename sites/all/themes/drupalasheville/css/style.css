@@ -6818,3 +6818,7 @@ table .checkbox input[type="checkbox"] {
 .masthead .mast-nav .region-navigation ul.nav li a:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+
+#views-exposed-form-dcavl-map-panel-pane-1 {
+  height: 360px;
+}
