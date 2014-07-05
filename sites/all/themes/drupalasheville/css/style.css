@@ -6819,6 +6819,20 @@ table .checkbox input[type="checkbox"] {
   background: rgba(255, 255, 255, 0.1);
 }
 
-#views-exposed-form-dcavl-map-panel-pane-1 {
-  height: 360px;
+.views-exposed-form .form-item-field-location-type-tid .form-item {
+  float: left;
+  margin-right: 20px;
+}
+
+.views-exposed-form .form-item-field-location-type-tid .form-item input {
+  display: none;
+}
+
+.views-exposed-form .form-item-field-location-type-tid label:hover {
+  cursor: pointer;
+}
+
+.views-exposed-form .form-item-field-location-type-tid .highlight label {
+  text-decoration: underline;
+  color: #f36523;
 }
