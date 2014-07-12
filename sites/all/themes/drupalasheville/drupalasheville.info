@@ -26,6 +26,7 @@ regions[page_bottom]    = 'Page bottom'
 ;;;;;;;;;;;;;;;;;;;;;
 
 stylesheets[all][] = css/style.css
+stylesheets[all][] = css/responsive.css
 
 
 ; For information on choosing the desired method, please read the Drupal

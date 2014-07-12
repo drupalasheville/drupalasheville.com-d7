@@ -1,7 +1,7 @@
 (function ($) {
 
   var $masthead2014 = $('.mast-head-2014 .background'),
-      $mastheadtitle2014 = $('.mast-head-2014 .title2014'),
+      $mastheadtitle2014 = $('.mast-head-2014 .text'),
       $logo2014 = $('.logo2014'),
       $body = $(document),
       $bodyHeight = $body.height();
@@ -15,9 +15,12 @@
         
         var mastBlur = -(scrollTopValue * 0.3)+'px';
         
-        var titleSize = 3 + -(scrollTopValue * 0.01);
+        var titleSize = 1 + -(scrollTopValue * 0.01);
         
-        var logoSize = (223 - (scrollTopValue * 0.9)) + 'px';
+        var logoSize = (223 - (scrollTopValue * 0.9));
+        var logoLeft = (20 + (scrollTopValue * 0.5));
+        
+        console.log(logoLeft);
         
         $masthead2014.css({
           'background-size': (100 - (scrollTopValue * 0.5)) + '%',
@@ -30,27 +33,14 @@
         
         $mastheadtitle2014.css({
           'font-size': titleSize + 'em',
-          'padding-left': logoSize
         });
         
         $logo2014.css({
-          'background-size': logoSize,
-          'width': logoSize,
-          'height': logoSize
-        });
-        
-      }
-      
-      
-      
-          
-          
-          
-  });
-
-  $(document).ready(function(){
-
-    
-
+          'background-size': logoSize + 'px',
+          'width': logoSize + 12 + 'px',
+          'height': logoSize + 12 + 'px',
+          'left': logoLeft + 'px'
+        }); 
+      }     
   });
 })(jQuery);

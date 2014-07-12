@@ -1718,7 +1718,12 @@ output {
   line-height: 1.428571429;
   color: #555555;
 }
-.form-control {
+.webform-client-form .form-item{
+  padding: 0 0 20px;
+}
+
+.form-control,
+.form-text {
   display: block;
   width: 100%;
   height: 34px;
@@ -1737,26 +1742,33 @@ output {
   -o-transition: border-color ease-in-out .15s, box-shadow ease-in-out .15s;
   transition: border-color ease-in-out .15s, box-shadow ease-in-out .15s;
 }
-.form-control:focus {
+.form-control:focus,
+.form-text:focus {
   border-color: #66afe9;
   outline: 0;
   -webkit-box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba(102, 175, 233, 0.6);
   -moz-box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba(102, 175, 233, 0.6);
   box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba(102, 175, 233, 0.6);
 }
-.form-control::-moz-placeholder {
+.form-control::-moz-placeholder,
+.form-text::-moz-placeholder {
   color: #999999;
   opacity: 1;
 }
-.form-control:-ms-input-placeholder {
+.form-control:-ms-input-placeholder,
+.form-text:-ms-input-placeholder {
   color: #999999;
 }
-.form-control::-webkit-input-placeholder {
+.form-control::-webkit-input-placeholder,
+.form-text::-webkit-input-placeholder {
   color: #999999;
 }
 .form-control[disabled],
 .form-control[readonly],
-fieldset[disabled] .form-control {
+fieldset[disabled] .form-control,
+.form-text[disabled],
+.form-text[readonly],
+fieldset[disabled] .form-text {
   cursor: not-allowed;
   background-color: #eeeeee;
   opacity: 1;
@@ -2109,7 +2121,7 @@ select[multiple].input-lg {
   padding: 6px 12px;
   font-size: 14px;
   line-height: 1.428571429;
-  border-radius: 4px;
+  border-radius: 0;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
@@ -2191,6 +2203,8 @@ fieldset[disabled] .btn-default.active {
   color: #ffffff;
   background-color: #f36523;
   border-color: #ef550d;
+  border: none;
+  background-image: none;
 }
 .btn-primary:hover,
 .btn-primary:focus,
@@ -2198,8 +2212,10 @@ fieldset[disabled] .btn-default.active {
 .btn-primary.active,
 .open > .dropdown-toggle.btn-primary {
   color: #ffffff;
-  background-color: #d74c0c;
-  border-color: #b5400a;
+  background-color: #fd8852;
+  border-color: #ef550d;
+  border: none;
+  background-image: none;
 }
 .btn-primary:active,
 .btn-primary.active,
@@ -2221,8 +2237,9 @@ fieldset[disabled] .btn-primary:active,
 .btn-primary.disabled.active,
 .btn-primary[disabled].active,
 fieldset[disabled] .btn-primary.active {
-  background-color: #f36523;
-  border-color: #ef550d;
+  background-color: #706c6d;
+  border-color: #5c5758;
+  background-image: none;
 }
 .btn-primary .badge {
   color: #f36523;
@@ -3133,7 +3150,7 @@ tbody.collapse.in {
   list-style: none;
   font-size: 14px;
   text-align: left;
-  background-color: #ffffff;
+  background-color: #f26522;
   border: 1px solid #cccccc;
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 4px;
@@ -6774,28 +6791,62 @@ table .checkbox input[type="checkbox"] {
   height: 100%;
   z-index: 3;
 }
-.masthead .mast-head-2014 .container .title2014 {
-  margin: 0;
-  height: 130px;
-  line-height: 130px;
-  font-size: 3.0em;
-  padding: 0 0 0 223px;
-  font-family: 'Poller One';
-  font-weight: 300;
-  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.9), 2px 2px 3px rgba(0, 0, 0, 0.9);
-  color: #fff;
+.masthead .mast-head-2014 .container .box{
   position: absolute;
-  bottom: 0;
-  left: 0;
+  top:30px;
+  right:30px;
+  bottom:30px;
+  left: 30px;
+  padding: 0 0 0 310px;
 }
-.masthead .mast-head-2014 .container .title2014 .logo2014 {
-  width: 223px;
-  height: 223px;
-  background: url(../images/dca2014-logo.png) left top no-repeat;
+.masthead .mast-head-2014 .container .logo2014 {
+  width: 235px;
+  height: 235px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.9) url(../images/dca2014-logo.png) center center no-repeat;
   background-size: 223px;
+  box-shadow: 3px 3px 0 #231f20;
   position: absolute;
-  bottom: -100px;
-  left: 0;
+  left: 20px;
+  top:50%;
+  margin-top: -135px;
+}
+.masthead .mast-head-2014 .container .text{
+  background: rgba(255,255,255,0.8);
+  padding: 20px 50px;
+  position: relative;
+  box-shadow: 3px 3px 0 #231f20;
+}
+.masthead .mast-head-2014 .container .text:after{
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 50px 30px 50px 0;
+  border-color: transparent rgba(255,255,255,0.8) transparent transparent;
+  position: absolute;
+  left: -30px;
+  top:50%;
+  margin-top: -50px;
+  content: '';
+  display: block;
+}
+.masthead .mast-head-2014 .container h2 {
+  margin: 0;
+  font-size: 6.3em;
+  font-family: 'Open Sans Condensed';
+  line-height: 1.0em;
+  font-weight: 600;
+  text-shadow: 3px 3px 0 #231f20, 2px 2px 3px #231f20;
+  color: #f26522;
+  text-transform: uppercase;
+}
+.masthead .mast-head-2014 .container h3 {
+  margin: 0;
+  font-size: 3.6em;
+  font-family: 'Open Sans Condensed';
+  line-height: 1.0em;
+  font-weight: 600;
+  color: #231f20;
 }
 .masthead .mast-nav {
   background: #f36523;
@@ -6818,6 +6869,9 @@ table .checkbox input[type="checkbox"] {
 .masthead .mast-nav .region-navigation ul.nav li a:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+.masthead .mast-nav .region-navigation ul.nav li ul li a {
+  font-size: 20px;
+}
 
 .views-exposed-form .form-item-field-location-type-tid .form-item {
   float: left;
@@ -6835,4 +6889,40 @@ table .checkbox input[type="checkbox"] {
 .views-exposed-form .form-item-field-location-type-tid .highlight label {
   text-decoration: underline;
   color: #f36523;
+}
+
+.become-sponsor-table{
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 30px;
+}
+
+.become-sponsor-table table{
+  border: solid #333;
+  border-width: 1px 0 0 1px;
+  min-width: 960px;
+}
+
+.become-sponsor-table table td{
+  border: solid #999;
+  border-width: 0 1px 1px 0;
+  padding: 3px;
+  font-size: 0.9em;
+  font-family: 'Open Sans';
+  font-weight: 500;
+  vertical-align: top;
+}
+.become-sponsor-table table th{
+  background: #333;
+  color: #fff;
+  border: solid #333;
+  border-width: 0 1px 1px 0;
+  padding: 3px;
+  font-family: 'Open Sans';
+  font-weight: 800;
+  width: 21%;
+  vertical-align: top;
+}
+.become-sponsor-table table th:first-child{
+  width: 16%;
 }
