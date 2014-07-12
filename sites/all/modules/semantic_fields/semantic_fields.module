@@ -1,0 +1,398 @@
+<?php
+/**
+ * @file
+ * The functionality of the module 
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function semantic_fields_permission() {
+  return array(
+    'administer semantic fields' => array(
+      'title' => t('Administer semantic fields'),
+      'description' => t('Manage presets for customizing the output of fields.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function semantic_fields_form_alter(&$form, &$form_state, $form_id) {  
+  if ($form_id == "field_ui_display_overview_form") {
+    $entity_type = $form['#entity_type'];
+    $bundle = $form['#bundle'];
+    $view_mode = $form['#view_mode'];
+    
+    $form['fields']['#header'][] = t('Field format');
+
+    foreach (element_children($form['fields']) as $name) {
+      $instance = field_info_instance($entity_type, $name, $bundle);
+      $display = $instance['display'][$view_mode];
+      $settings = (isset($form_state['formatter_settings'][$name]) ? $form_state['formatter_settings'][$name] : $display['settings']);
+
+      $form['fields'][$name]['semantic_field_format'] = array(
+        '#type' => 'select',
+        '#options' => semantic_fields_get_preset_options(),
+        '#empty_option' => t('Default'),
+        '#default_value' => (isset($settings['semantic_field_format']) ? $settings['semantic_field_format'] : ''),
+      );
+    }
+    
+    $form['#submit'] = array_merge(array('semantic_fields_field_ui_display_overview_form_submit'), $form['#submit']);
+  }
+}
+
+/**
+ * Acts on submit.
+ */
+function semantic_fields_field_ui_display_overview_form_submit(&$form, &$form_state) {
+  $form_values = $form_state['values'];
+  $entity_type = $form['#entity_type'];
+  $bundle = $form['#bundle'];
+  $view_mode = $form['#view_mode'];
+  foreach ($form['#fields'] as $field_name) {
+    // Retrieve the stored instance settings to merge with the incoming values.
+    $instance = field_read_instance($entity_type, $field_name, $bundle);
+    $instance['display'][$view_mode]['settings']['semantic_field_format'] = $form_values['fields'][$field_name]['semantic_field_format'];
+    field_update_instance($instance);
+  }
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function semantic_fields_field_formatter_info_alter(&$info) {
+  foreach (array_keys($info) as $name) {
+    $info[$name]['settings']['semantic_field_format'] = 0;
+  }
+}
+
+/**
+ * Load all the presets, from file or database
+ */
+function semantic_fields_get_presets() {
+  ctools_include('export');
+  $results = ctools_export_load_object('semantic_fields_preset','all', array());
+  $presets = array();
+  foreach ($results as $result) {
+    $preset['name'] = $result->name;
+    $preset['admin_title'] = $result->admin_title; 
+    $preset['description'] = $result->description;
+    $preset['data'] = $result->data;
+    $presets[] = $preset;
+  }
+ return $presets;
+}
+
+/**
+ * Load specific/s preset
+ */
+function semantic_fields_preset_load($name) {
+  ctools_include('export');
+  $result = ctools_export_load_object('semantic_fields_preset','names', array($name));
+  if (isset($result[$name])) {
+    return $result[$name];
+  }
+}
+
+/**
+ * Get options
+ */
+function semantic_fields_get_preset_options() {
+  $presets = semantic_fields_get_presets();
+  $options = array();
+  foreach($presets as $preset) {
+    $options[$preset['name']] = $preset['admin_title'];
+  }
+  return $options;
+}
+
+/**
+ * Implements hook_theme_registry_alter().
+ */
+function semantic_fields_theme_registry_alter(&$theme_registry) {
+  $theme_registry['field']['theme path'] = drupal_get_path('module', 'semantic_fields');
+  $theme_registry['field']['function'] = 'theme_semantic_field';
+}
+
+/**
+ * Implements hook_preprocess_HOOK().
+ */
+function semantic_fields_preprocess_field(&$variables) {
+  $element = $variables['element'];
+  $field = field_info_field($element['#field_name']);
+  $instance = field_info_instance($element['#entity_type'], $element['#field_name'], $element['#bundle']);
+  $display = (isset($instance['display'][$element['#view_mode']]) ? $instance['display'][$element['#view_mode']] : $instance['display']['default']);
+  
+  $use_defaults = FALSE;
+  if (!isset($display['settings']['semantic_field_format']) || empty($display['settings']['semantic_field_format'])) {
+    // Use defaults if Semantic Fields settings do not exist.
+    $use_defaults = TRUE;
+  }
+
+  // Load semantic field display format settings.
+  if (!$use_defaults) {
+    $preset = semantic_fields_preset_load($display['settings']['semantic_field_format']);
+  }
+  if (empty($preset)) {
+    // Use defaults if settings could not be loaded.
+    $use_defaults = TRUE;
+  }
+
+  // Use default settings if the selected field format cannot be loaded, or if the Default field format is selected.
+  if ($use_defaults) {
+    $settings = array(
+      'field_element' => 'div',
+      'field_class' => '',
+      'field_prefix' => '',
+      'field_suffix' => '',
+      'label_element_above' => 'div',
+      'label_class_above' => '',
+      'label_suffix_above' => ':',
+      'label_element_inline' => 'div',
+      'label_class_inline' => '',
+      'label_suffix_inline' => ':',
+      'multiple_items_element' => 'div',
+      'multiple_items_class' => '',
+      'multiple_item_element' => 'div',
+      'multiple_item_class' => '',
+      'multiple_item_separator' => '',
+      'use_singlevalue_settings' => 0,
+      'single_item_element' => 'div',
+      'single_item_class' => '',
+      'last_every_nth' => 0,
+      'first_class' => '',
+      'last_class' => '',
+      'striping_classes' => 'odd even',
+    );
+  }
+  else {
+    $settings = $preset->data;
+  }
+
+  // Provide Semantic fields field template suggestions.
+  $variables['theme_hook_suggestions'][] = 'semantic_field';
+  $variables['theme_hook_suggestions'][] = 'semantic_field__' . $element['#field_type'];
+  $variables['theme_hook_suggestions'][] = 'semantic_field__' . $element['#field_name'];
+  $variables['theme_hook_suggestions'][] = 'semantic_field__' . $element['#bundle'];
+  $variables['theme_hook_suggestions'][] = 'semantic_field__' . $element['#field_name'] . '__' . $element['#bundle'];
+
+
+  
+  // Field
+  $variables['field_element'] = check_plain($settings['field_element']);
+  $variables['field_prefix'] = !empty($settings['field_prefix']) ? check_plain($settings['field_prefix']) : '';
+  $variables['field_suffix'] = !empty($settings['field_suffix']) ? check_plain($settings['field_suffix']) : '';
+  if (!empty($settings['field_class'])) {
+    $variables['classes_array'][] = check_plain($settings['field_class']);
+  }
+
+  // Label
+  $variables['label_element'] = ($element['#label_display'] == "above") ? check_plain($settings['label_element_above']) : check_plain($settings['label_element_inline']);
+  $variables['label_suffix'] = ($element['#label_display'] == "above") ? check_plain($settings['label_suffix_above']) : check_plain($settings['label_suffix_inline']);
+  if (!isset($variables['label_classes_array'])) {
+    $variables['label_classes_array'] = array(
+      'field-label',
+    );
+  }
+  if ($element['#label_display'] == "above") {
+    if (!empty($settings['label_class_above'])) {
+      $variables['label_classes_array'][] = check_plain($settings['label_class_above']);
+    }
+  }
+  else if ($element['#label_display'] == "inline") {
+    if (!empty($settings['label_class_inline'])) {
+      $variables['label_classes_array'][] = check_plain($settings['label_class_inline']);
+    }
+  }
+
+  // Items
+  if (!isset($variables['content_classes_array'])) {
+    $variables['content_classes_array'] = array(
+      'field-items',
+    );
+  }
+  $num_items = count($variables['items']);
+  if ($num_items == 1) {
+    if (!$settings['use_singlevalue_settings']) {
+      $variables['content_element'] = check_plain($settings['multiple_items_element']);
+    }
+    else {
+      $variables['content_element'] = '';
+    }
+  }
+  else {
+    $variables['content_element'] = check_plain($settings['multiple_items_element']);
+    if (!empty($settings['multiple_items_class'])) {
+      $variables['content_classes_array'][] = check_plain($settings['multiple_items_class']);
+    }
+  }
+
+  // Item
+  if ($num_items == 1 && $settings['use_singlevalue_settings']) {
+    $variables['item_element'] = check_plain($settings['single_item_element']);
+    $variables['item_separator'] = '';
+  }
+  else {
+    $variables['item_element'] = check_plain($settings['multiple_item_element']);
+    $variables['item_separator'] = ($num_items > 1 && !empty($settings['multiple_item_separator']) ? check_plain($settings['multiple_item_separator']) : '');
+  }
+
+  $variables['item_classes'] = array();
+  $last_every_nth = !empty($settings['last_every_nth']) ? check_plain($settings['last_every_nth']) : 0;
+  foreach ($variables['items'] as $delta => $item) {
+    $item_classes = array(
+      'field-item',
+    );
+    if ($num_items == 1) {
+      if ($settings['use_singlevalue_settings'] && $settings['single_item_class']) {
+        $item_classes[] = check_plain($settings['single_item_class']);
+      }
+      elseif (!$settings['use_singlevalue_settings'] && $settings['multiple_item_class']) {
+        $item_classes[] = check_plain($settings['multiple_item_class']);
+      }
+    }
+    elseif ($num_items > 1) {
+      if ($settings['multiple_item_class']) {
+        $item_classes[] = check_plain($settings['multiple_item_class']);
+      }
+    }
+
+    // Striping
+    $striping_classes = array();
+    if (trim($settings['striping_classes'])) {
+      $striping_classes = explode(' ', trim($settings['striping_classes']));
+      $item_classes[] = $striping_classes[$delta % count($striping_classes)];
+    }
+
+    if ($settings['first_class']) {
+      if (($last_every_nth && $delta % $last_every_nth == 0) || (!$last_every_nth && $delta == 0)) {
+        $item_classes[] = check_plain($settings['first_class']);
+      }
+    }
+    if ($settings['last_class']) {
+      if (($last_every_nth && ($delta + 1) % $last_every_nth == 0) || (!$last_every_nth && ($delta + 1) == $num_items)) {
+        $item_classes[] = check_plain($settings['last_class']);
+      }
+    }
+
+    $variables['item_classes'][$delta] = $item_classes;
+  }
+}
+
+/**
+ * Implements hook_process_HOOK().
+ */
+function semantic_fields_process_field(&$variables) {
+  // Label
+  $variables['label_classes'] = (isset($variables['label_classes_array']) && !empty($variables['label_classes_array'])) ? implode(' ', $variables['label_classes_array']) : '';
+
+  // Items
+  $variables['content_classes'] = (isset($variables['content_classes_array']) && !empty($variables['label_classes_array'])) ? implode(' ', $variables['content_classes_array']) : '';
+  
+  // Item
+  if (isset($variables['item_classes']) && is_array($variables['item_classes'])) {
+    foreach ($variables['item_classes'] as $delta => $classes) {
+      if (is_array($classes)) {
+        $variables['item_classes'][$delta] = implode(' ', $classes);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function semantic_fields_theme($existing, $type, $theme, $path) {
+  return array(
+    'semantic_field' => array(
+      'render element' => 'element',
+    ),
+  );
+}
+
+/**
+ * Theme the fields
+ */
+function theme_semantic_field(&$variables) {
+  $output = '';
+  // Token support for nodes
+  if (module_exists('token') == TRUE) {
+    global $user;
+    
+    if (arg(0) == 'node') {
+      $nid = arg(1);
+    }
+    if (isset($nid)) {
+      $node = node_load($nid);
+      $data = array('node' => $node, 'user' => $user);
+    }
+  }  
+  // Render the label, if it's not hidden.
+  if (!$variables['label_hidden']) {
+    if (!empty($variables['label_element'])) {
+      $output .= '<' . $variables['label_element'] . ' class="' . $variables['label_classes'] . '"' . $variables['title_attributes'] . '>';
+    }
+    $output .= $variables['label'] . $variables['label_suffix'] . '&nbsp;';
+    if (!empty($variables['label_element'])) {
+      $output .= '</' . $variables['label_element'] . '>';
+    }
+  }
+  // Render the items.
+  if (!empty($variables['content_element'])) {
+    $output .= '<' . $variables['content_element'] . ' class="' . $variables['content_classes'] . '"' . $variables['content_attributes'] . '>';
+  }
+  foreach ($variables['items'] as $delta => $item) {
+    if ($variables['item_element']) {
+      $output .= '<' . $variables['item_element'] . ' class="' . $variables['item_classes'][$delta] . '"' . $variables['item_attributes'][$delta] . '>';
+    }
+    $output .= drupal_render($item);
+    if ($variables['item_element']) {
+      $output .= '</' . $variables['item_element'] . '>';
+    } 
+    if (!empty($variables['item_separator']) && $delta < (count($variables['items']) - 1)) {
+      $output .= $variables['item_separator'];
+    }
+  }
+  if (!empty($variables['content_element'])) {
+    $output .= '</' . $variables['content_element'] . '>';
+  }
+  // Render the top-level DIV.
+  if (!empty($variables['field_element'])) {
+    $output = '<' . $variables['field_element'] . ' class="' . $variables['classes'] . '"' . $variables['attributes'] . '>' . $output . '</' . $variables['field_element'] . '>';
+  }
+  // Add a prefix and suffix to the field, if specified
+  if (!empty($variables['field_prefix'])) {
+    $output = $variables['field_prefix'] . $output;
+  }
+  if (!empty($variables['field_suffix'])) {
+    $output .= $variables['field_suffix'];
+  }
+  if (isset($nid)) {
+    return token_replace($output, $data);
+  }
+  else {
+    return $output; 
+  }
+}
+
+/**
+* Implements hook_ctools_plugin_api().
+*/
+function semantic_fields_ctools_plugin_api($owner, $api) {
+  if ($owner == 'semantic_fields' && $api == 'semantic_fields') {
+    return array('version' => 1);
+  }
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+  function semantic_fields_ctools_plugin_directory($module, $type) {
+    // Load the export_ui plugin.
+    if ($type =='export_ui') {
+      return 'plugins/export_ui';
+    }
+  }

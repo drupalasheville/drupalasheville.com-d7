@@ -1,0 +1,51 @@
+/**
+* Styling Semantic Fields Preset Form
+*/
+
+#semantic-fields-preset-form .fieldset-wrapper .form-item {
+	float: left;
+	width: 30%;
+}
+
+#semantic-fields-preset-form .fieldset-wrapper .form-item + .form-item {
+	margin-left: 5%;
+	width: 30%;
+}
+
+#semantic-fields-preset-form .fieldset-wrapper .form-item + .form-item + .form-item {
+	margin-left: 5%;
+	width: 30%;
+}
+
+#semantic-fields-preset-form .fieldset-wrapper fieldset {
+	clear: both;
+}
+
+#semantic-fields-preset-form .form-item-basic-settings-description {
+  clear: both;
+  margin-left: 0 !important;
+  width: 100% !important;
+}
+
+#semantic-fields-preset-form .semantic-fields-multiple-values-fields,
+#semantic-fields-preset-form .semantic-fields-multiple-values-field,
+#semantic-fields-preset-form .semantic-fields-single-values-item {
+	background: transparent;
+	border: 0 none;
+	margin: 0;
+	padding: 0;
+}
+
+#semantic-fields-preset-form .form-item-semantic-field-settings-use-singlevalue-settings,
+#semantic-fields-preset-form .form-item-semantic-field-settings-striping-classes {
+	margin-left: 0 !important;
+	width: 100% !important;
+}
+
+#semantic-fields-preset-form .semantic-fields-single-values-settings .form-item {margin: 0;}
+
+#semantic-fields-preset-form .form-item-semantic-field-settings-field-prefix,
+#semantic-fields-preset-form .form-item-semantic-field-settings-multiple-item-separator {
+  clear: left;
+  margin-left: 0 !important;
+}

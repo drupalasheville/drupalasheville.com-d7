@@ -1,0 +1,78 @@
+<?php
+/**
+ * Implements hook_schema().
+ */
+function semantic_fields_schema() {
+  // This should always point to our 'current' schema. This makes it relatively easy
+  // to keep a record of schema as we make changes to it.
+  return semantic_fields_schema_1();
+}
+
+/**
+ * Defines our schema
+ */
+function semantic_fields_schema_1() {
+  $schema = array();
+
+  $schema['semantic_fields_preset'] = array(
+    'description' => t('Table storing preset definitions.'),
+    'export' => array(
+      'key' => 'name',
+      'key name' => 'Name',
+      'primary key' => 'id',
+      'identifier' => 'preset',
+      'default hook' => 'default_semantic_fields_preset',
+      'load callback' => 'semantic_fields_preset_load',
+      'api' => array(
+        'owner' => 'semantic_fields',
+        'api' => 'semantic_fields',
+        'minimum_version' => 1,
+        'current_version' => 1,
+      ),
+    ),
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'no export' => TRUE, // Do not export database-only keys.
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'admin_title' => array(
+        'type' => 'varchar',
+        'length' => '255',
+        'description' => 'The administrative title.',
+      ),
+      'description' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+      ),
+      'data' => array(
+        'type' => 'blob',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+      ),
+    ),
+    'primary key' => array('id'),
+    'indexes' => array(
+      'name' => array('name'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Change name of field name in database, if it exists
+ */
+function semantic_fields_update_7001() {
+  if (!db_field_exists('semantic_fields_preset', 'admin_title')) {
+    db_change_field('semantic_fields_preset', 'human_name', 'admin_title', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE,));
+  }
+}

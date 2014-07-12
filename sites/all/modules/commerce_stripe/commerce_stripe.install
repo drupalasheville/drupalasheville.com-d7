@@ -1,0 +1,48 @@
+<?php
+/**
+ * @file
+ * Contains requirements function for Commerce Stripe.
+ */
+
+/**
+ * Implements hook_requirements().
+ */
+function commerce_stripe_requirements($phase) {
+  $requirements = array();
+
+  if ($phase == 'runtime') {
+    $t = get_t();
+    // Check for the Stripe PHP library.
+    if (file_exists(libraries_get_path('stripe-php') . '/lib/Stripe.php')) {
+      $requirements['commerce_stripe_php'] = array(
+        'value' => $t('Installed'),
+        'severity' => REQUIREMENT_OK,
+      );
+    }
+    else {
+      $requirements['commerce_stripe_php'] = array(
+        'value' => $t('Missing!'),
+        'severity' => REQUIREMENT_ERROR,
+        'description' => $t('Stripe library missing. Download the Stripe library from <a href="@url">https://github.com/stripe/stripe-php</a> and place it in to sites/all/libraries/stripe-php', array('@url' => 'https://github.com/stripe/stripe-php')),
+      );
+    }
+    $requirements['commerce_stripe_php']['title'] = $t('Stripe PHP library');
+
+    // Check for Commerce currency.
+    if (in_array(commerce_default_currency(), array('USD', 'CAD', 'EUR', 'GBP'))) {
+      $requirements['commerce_stripe_currency'] = array(
+        'value' => $t('Valid currency'),
+        'severity' => REQUIREMENT_OK,
+      );
+    }
+    else {
+      $requirements['commerce_stripe_currency'] = array(
+        'value' => $t('Invalid default currency!'),
+        'severity' => REQUIREMENT_ERROR,
+        'description' => $t('Stripe currently supports only USD and CAD as a currency.'),
+      );
+    }
+    $requirements['commerce_stripe_currency']['title'] = $t('Stripe currency check');
+  }
+  return $requirements;
+}

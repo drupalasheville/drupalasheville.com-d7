@@ -1,0 +1,159 @@
+<?php
+// $Id$
+
+/**
+ *  @file 
+ *  Allows site administrators to choose which HTML wrappers are used in fields
+ */
+
+/**
+ * Implements hook_form_field_ui_display_overview_form_alter().
+ */
+function field_wrappers_form_field_ui_display_overview_form_alter(&$form, $form_state) {
+
+  $wrapper_elements = field_wrapper_elements();
+
+  $entity_type = $form['#entity_type'];
+  $bundle = $form['#bundle'];
+  $view_mode = $form['#view_mode'];
+
+  // Add a 'Use title as label' checkbox to the formatter display settings form of image fields.
+  foreach (element_children($form['fields']) as $name) {
+
+    $instance = field_info_instance($entity_type, $name, $bundle);
+    $display = $instance['display'][$view_mode];
+    $settings = (isset($form_state['formatter_settings'][$name]) ? $form_state['formatter_settings'][$name] : $display['settings']);
+
+    foreach (array_keys(_field_wrapper_types()) as $wrapper_key) {
+      $form['fields'][$name][$wrapper_key] = array(
+        '#type' => 'select',
+        '#options' => $wrapper_elements,
+        '#empty_option' => t('- Use default -'),
+        '#default_value' => (isset($settings[$wrapper_key]) ? $settings[$wrapper_key] : ''),
+      );
+    }
+  }
+  $form['#submit'] = array_merge(array('field_wrappers_field_ui_display_overview_form_submit'), $form['#submit']);
+
+  foreach (_field_wrapper_types() as $wrapper_key_label) {
+    $form['fields']['#header'][] = $wrapper_key_label;
+  }
+}
+
+/**
+ *
+ */
+function field_wrappers_field_ui_display_overview_form_submit(&$form, &$form_state) {
+  $form_values = $form_state['values'];
+  $entity_type = $form['#entity_type'];
+  $bundle = $form['#bundle'];
+  $view_mode = $form['#view_mode'];
+
+  // Save data for 'regular' fields.
+  foreach ($form['#fields'] as $field_name) {
+    // Retrieve the stored instance settings to merge with the incoming values.
+    $instance = field_read_instance($entity_type, $field_name, $bundle);
+    foreach (array_keys(_field_wrapper_types()) as $wrapper_key) {
+      $instance['display'][$view_mode]['settings'][$wrapper_key] = $form_values['fields'][$field_name][$wrapper_key];
+    }
+    field_update_instance($instance);
+  }
+}
+
+/**
+ *
+ */
+function field_wrappers_field_formatter_info_alter(&$info) {
+  foreach (array_keys($info) as $name) {
+    foreach (array_keys(_field_wrapper_types()) as $wrapper_key) {
+      $info[$name]['settings'][$wrapper_key] = 0;
+    }
+  }
+}
+
+/**
+ *
+ */
+function field_wrappers_field_attach_view_alter(&$output, $context) {
+
+  if (isset($output['#entity_type']) && isset($output['#bundle'])) {
+
+    $entity_type = $output['#entity_type'];
+    $bundle = $output['#bundle'];
+    $view_mode = $context['view_mode'];
+
+    // Append RDF term mappings on displayed taxonomy links.
+    foreach (element_children($output) as $field_name) {
+      $element = &$output[$field_name];
+      $instance = field_read_instance($entity_type, $field_name, $bundle);
+      $display = (isset($instance['display'][$view_mode]) ? $instance['display'][$view_mode] : $instance['display']['default']);
+
+      foreach (array_keys(_field_wrapper_types()) as $wrapper_key) {
+        if (isset($display['settings'][$wrapper_key])) {
+          $element['#' . $wrapper_key] = $display['settings'][$wrapper_key];
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_preprocess_field().
+ */
+function field_wrappers_preprocess_field(&$variables) {
+  $element = $variables['element'];
+
+  foreach (array_keys(_field_wrapper_types()) as $wrapper_key) {
+    // Set the default wrapper.
+    $variables[$wrapper_key] = 'div';
+
+    if (isset($element['#' . $wrapper_key]) && $element['#' . $wrapper_key] !== '') {
+      $variables[$wrapper_key] = ($element['#' . $wrapper_key] == '0' ? '' : $element['#' . $wrapper_key]);
+    }
+  }
+}
+
+/**
+ * Implements hook_process_field().
+ */
+function field_wrappers_theme_registry_alter(&$theme_registry) {
+  /// Only overwrite the template file if it isn't overwriteen by a theme.
+  if (!isset($theme_registry['field']['path'])) {
+    $theme_registry['field']['template'] = drupal_get_path('module', 'field_wrappers') . '/field';
+    unset($theme_registry['field']['function']);
+  }
+}
+
+/**
+ *
+ */
+function field_wrapper_elements() {
+  $wrapper_elements = array(
+    '0' => t('- None -'),
+    'div' => t('DIV'),
+    'span' => t('SPAN'),
+    'h1' => t('H1'),
+    'h2' => t('H2'),
+    'h3' => t('H3'),
+    'h4' => t('H4'),
+    'h5' => t('H5'),
+    'h6' => t('H6'),
+    'p' => t('P'),
+    'strong' => t('STRONG'),
+    'em' => t('EM'),
+  );
+  drupal_alter('field_wrapper_elements', $wrapper_elements);
+
+  return $wrapper_elements;
+}
+
+/**
+ *
+ */
+function _field_wrapper_types() {
+  return array(
+    'field_wrapper' => t('Field wrapper'),
+    'label_wrapper' => t('Label wrapper'),
+    'item_wrapper' => t('Item wrapper'),
+  );
+}

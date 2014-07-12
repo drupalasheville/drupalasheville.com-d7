@@ -1,0 +1,119 @@
+<?php
+/**
+* Implements hook_ctools_plugin_api().
+*/
+function semantic_fields_default_presets_ctools_plugin_api($owner, $api) {
+  if ($owner == 'semantic_fields' && $api == 'semantic_fields') {
+    return array('version' => 1);
+  }
+}
+
+/**
+ * Implements hook_default_mymodule_preset().
+ *
+ * Provide a couple of default presets.
+ */
+function semantic_fields_default_presets_default_semantic_fields_preset() {
+  $export = array();
+  
+  $preset = new stdClass();
+  $preset->disabled = FALSE; /* Edit this to true to make a default preset disabled initially */
+  $preset->api_version = 1;
+  $preset->name = 'ordered_list';
+  $preset->admin_title = 'Ordered list';
+  $preset->description = 'Display the content as an ordered list';
+  $preset->data = array(
+    'field_element' => 'ol',
+    'field_class' => '',
+    'field_prefix' => '',
+    'field_suffix' => '',
+    'label_element_above' => 'span',
+    'label_class_above' => '',
+    'label_suffix_above' => '',
+    'label_element_inline' => 'span',
+    'label_class_inline' => '',
+    'label_suffix_inline' => ':',
+    'multiple_items_element' => '',
+    'multiple_items_class' => '',
+    'multiple_item_element' => 'li',
+    'multiple_item_class' => '',
+    'multiple_item_separator' => '',
+    'use_singlevalue_settings' => 0,
+    'single_item_element' => 'li',
+    'single_item_class' => '',
+    'last_every_nth' => '0',
+    'first_class' => 'first',
+    'last_class' => 'last',
+    'striping_classes' => 'odd even',
+  );
+  $export['ordered_list'] = $preset;
+  
+  $preset = new stdClass();
+  $preset->disabled = FALSE; /* Edit this to true to make a default preset disabled initially */
+  $preset->api_version = 1;
+  $preset->name = 'unordered_list';
+  $preset->admin_title = 'Unordered list';
+  $preset->description = 'Display the content as an unordered list';
+  $preset->data = array(
+    'field_element' => 'ul',
+    'field_class' => '',
+    'field_prefix' => '',
+    'field_suffix' => '',
+    'label_element_above' => 'span',
+    'label_class_above' => '',
+    'label_suffix_above' => '',
+    'label_element_inline' => 'span',
+    'label_class_inline' => '',
+    'label_suffix_inline' => ':',
+    'multiple_items_element' => '',
+    'multiple_items_class' => '',
+    'multiple_item_element' => 'li',
+    'multiple_item_class' => '',
+    'multiple_item_separator' => '',
+    'use_singlevalue_settings' => 0,
+    'single_item_element' => 'li',
+    'single_item_class' => '',
+    'last_every_nth' => '0',
+    'first_class' => 'first',
+    'last_class' => 'last',
+    'striping_classes' => 'odd even',
+  );
+  $export['unordered_list'] = $preset;
+  
+  $preset = new stdClass();
+  $preset->disabled = FALSE; /* Edit this to true to make a default preset disabled initially */
+  $preset->api_version = 1;
+  $preset->name = 'clear';
+  $preset->admin_title = 'Clear';
+  $preset->description = 'Clears out as much as possible of the the extra HTML Drupal adds.';
+  $preset->data = array(
+    'field_element' => 'div',
+    'field_class' => '',
+    'field_prefix' => '',
+    'field_suffix' => '',
+    'label_element_above' => 'span',
+    'label_class_above' => '',
+    'label_suffix_above' => '',
+    'label_element_inline' => 'span',
+    'label_class_inline' => '',
+    'label_suffix_inline' => '',
+    'multiple_items_element' => '',
+    'multiple_items_class' => '',
+    'multiple_item_element' => '',
+    'multiple_item_class' => '',
+    'multiple_item_separator' => '',
+    'use_singlevalue_settings' => 0,
+    'single_item_element' => '',
+    'single_item_class' => '',
+    'last_every_nth' => '0',
+    'first_class' => '',
+    'last_class' => '',
+    'striping_classes' => 'odd even',
+  );
+  $export['clear'] = $preset;
+  
+
+  
+  
+  return $export;
+}

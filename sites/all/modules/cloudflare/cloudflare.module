@@ -1,0 +1,532 @@
+<?php
+/**
+* Implementation of hook_menu().
+*/
+function cloudflare_menu() {
+  $items['admin/config/people/cloudflare'] = array(
+    'title' => 'Cloudflare',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cloudflare_admin'),
+    'access arguments' => array('administer cloudflare'),
+    'description' => t('Configure the Cloudflare settings.')
+  );
+  return $items;
+}
+
+/**
+* Implements hook_permission().
+*/
+function cloudflare_permission() {
+  return array(
+    'administer cloudflare' => array(
+      'title' => t('Administer Cloudflare'),
+      'description' => t('Perform administration tasks for Cloudflare.'),
+    ),
+  );
+}
+
+/**
+* cloudflare_menu() page callback function.
+*/
+function cloudflare_admin() {
+  $form = array();
+
+  $form['cloudflare_api_email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('E-mail address'),
+    '#description' => t('Email address for your Cloudflare account.  You can find it on the ').l(t('Account Tab'), 'https://www.cloudflare.com/my-account.html'),
+    '#default_value' => variable_get('cloudflare_api_email', ''),
+    '#required' => TRUE,
+  );
+  $form['cloudflare_api_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('API key'),
+    '#description' => t('API key for your Cloudflare account.  You can find it on the ').l(t('Account Tab'), 'https://www.cloudflare.com/my-account.html'),
+    '#default_value' => variable_get('cloudflare_api_key', ''),
+    '#required' => TRUE,
+  );
+  return system_settings_form($form);
+}
+
+
+function cloudflare_admin_submit($form, &$form_state) {
+  $form_values = $form_state['values'];
+  variable_set('cloudflare_api_email', $form_values['api_email']);
+  variable_set('cloudflare_api_key', $form_values['api_key']);
+}
+
+/**
+* Implementation of hook_form_FORM_ID_alter().
+*/
+function cloudflare_form_comment_admin_overview_alter(&$form, $form_state) {
+  // If cloudflare hasn't been configured, don't display form alterations.
+  if (!_is_cloudflare_configured()) {
+    return $form;
+  }
+
+  // Add some additional options to the comment operations list.
+  $form['options']['operation']['#options']['Cloudflare Actions'] = array(
+    'cloudflare_spam' => t('Report Spam'),
+    'cloudflare_spam_delete' => t('Report Spam + Delete'),
+    'cloudflare_ban_ip' => t('Ban IP'),
+    'cloudflare_ban_ip_delete' => t('Ban IP + Delete Comment'),
+    'cloudflare_whitelist_ip' => t('Whitelist IP'),
+    'cloudflare_whitelist_ip_publish' => t('Whitelist IP + Publish Comment'),
+    // TODO: Integrate with undocumented Spam API
+    //'cloudflare_report_spam' => t('Report Spam'),
+    //'cloudflare_report_spam_delete' => t('Report Spam + Delete Comment'),
+  );
+  
+  // append a submit handler that will proces after the default form handler is finished.
+  $form['#submit'][] = 'cloudflare_form_comment_admin_overview_submit';
+
+  return $form;
+}
+
+function cloudflare_form_comment_admin_overview_submit($form, &$form_state) {
+  if (isset($form_state['values']['operation'])) {
+    $operation = $form_state['input']['operation'];
+
+    if (isset($form_state['values']['comments'])) {
+      $cids = $form_state['values']['comments'];
+
+      foreach ($cids as $cid => $value) {
+        switch($operation) 
+        {
+          case 'cloudflare_ban_ip':
+            _cloudflare_ban_comment($cid, FALSE);
+            break;
+          case 'cloudflare_ban_ip_delete':
+            _cloudflare_ban_comment($cid, TRUE);
+            break;
+          case 'cloudflare_whitelist_ip':
+            _cloudflare_whitelist_comment($cid, FALSE);
+            break;
+          case 'cloudflare_whitelist_ip_publish':
+            _cloudflare_whitelist_comment($cid, TRUE);
+            break;
+          case 'cloudflare_spam':
+            _cloudflare_spam_report($cid, FALSE);
+            break;
+          case 'cloudflare_spam_delete':
+            _cloudflare_spam_report($cid, TRUE);
+            break;        
+          // TODO: Integrate with undocumented Spam API
+          //case 'cloudflare_report_spam':
+          //  break;
+          //case 'cloudflare_report_spam_delete':
+          //  break;            
+        }
+      }
+      
+     cache_clear_all();
+    }        
+  }
+
+  return $form;
+}
+
+
+/**
+* TODO: Implementation of hook_action_info().
+*/
+//function cloudflare_action_info() {
+//  $cloudflare_threat_actions = array();
+//  $cloudflare_threat_actions['cloudflare_add_ip_to_ban_list_action'] = array(
+//    'description' => t('Add IP Address to Cloudflare ban list'),
+//    'type' => 'system',
+//    'configurable' => FALSE,
+//    'hooks' => array( 'any' => TRUE )
+//  );
+//  return $cloudflare_threat_actions;
+//}
+
+
+/**
+ * TODO: Implementation of a Drupal action.
+ */
+//function cloudflare_add_ip_to_ban_list_action(&$object, $context = array()) {
+//
+//}
+
+function _cloudflare_ban_comment($cid, $deletecid = FALSE){
+  $ip = _get_ip_address_from_comment($cid);
+
+  //if (_cloudflare_ban_ip($ip) == "OK" && $deletecid) {
+    // only delete the comment if action returned true.
+    _cloudflare_delete_comment($cid);
+  //}
+}
+
+
+function _cloudflare_whitelist_comment($cid, $publishcid = FALSE){
+  $ip = _get_ip_address_from_comment($cid);
+
+  if (_cloudflare_whitelist_ip($ip) == "OK" && $publishcid) {
+    // only publish the comment if action returned true.
+    _cloudflare_publish_comment($cid);
+  }
+}
+
+
+function _cloudflare_spam_report($cid, $deletecid = FALSE) {
+  $return_val = _cloudflare_spam_api($cid);
+  if ($return_val['result']->result == 'error') {
+    watchdog('cloudflare', t('Spam report failed.')."\n".serialize($return_val['result']->msg)."\n".serialize($return_val['options']));
+    drupal_set_message(t("Spam report failed: %msg",array('%msg'=>$return_val['result']->msg)));
+  } elseif ($return_val['result']->result == 'success') {
+    watchdog('cloudflare', t('Successfully submitted CloudFlare spam report.')."\n".serialize($return_val['value']));  
+    drupal_set_message(t("Successfully submitted CloudFlare spam report for ").$return_val['value']['am'].' / '.$return_val['value']['ip']);
+    // If delete is chosen, let's get that done now.    
+    if ($deletecid) {
+      _cloudflare_delete_comment($cid);
+    }
+  } else {
+    watchdog('cloudflare', t('Unexpected Response from CloudFlare.')."\n".$return_val['fc']);
+    drupal_set_message(t("Unexpected Response from CloudFlare. Please review your watchdog report for detailed information."));
+  }
+}
+
+
+function _cloudflare_whitelist_ip($ip) {
+  $result = _cloudflare_threat_api('wl',$ip);
+  // Get the first line only
+  list($status_code) = explode("\n", $result);
+
+  if ($status_code == "OK") {
+    drupal_set_message(t("You have successfully added %ip to your Cloudflare white list.", array('%ip' => $ip)), 'status', FALSE);
+    // record a message noting the action taken
+    watchdog('cloudflare', t('You have successfully added %ip to your Cloudflare white list.'), array('%ip' => $ip));
+  } else {
+      switch($status_code) {
+        case "E_UNAUTH":
+          $message_user = "Cloudflare response: Authorization could not be completed.";
+          $message_watchdog = t("Cloudflare response: Authorization could not be completed.");
+          break;
+        case "E_INVLDIP":
+          $message_user = "Cloudflare response: Malformed IPv4 address passed in. (IP: %ip)";
+          $message_watchdog = t("Cloudflare response: Malformed IPv4 address passed in. (IP: %ip)");
+          break;
+        case "E_INVLDINPUT":
+          $message_user = "Cloudflare response: Some other input was not valid.";
+          $message_watchdog = t("Cloudflare response: Some other input was not valid.");
+          break;
+        case "E_MAXAPI":
+          $message_user = "Cloudflare response: You have exceeded your allowed number of API calls.";
+          $message_watchdog = t("Cloudflare response: You have exceeded your allowed number of API calls.");
+          break;
+        case "CF_CIDR":
+          $message_user = "Sorry, %ip belongs to Cloudflare and cannot be white listed.";
+          $message_watchdog = t("Sorry, %ip belongs to Cloudflare and cannot be white listed.");
+          break;
+        case "MY_IP":
+          $message_user = "You dork.  %ip belongs to you!";
+          $message_watchdog = t("You dork.  %ip belongs to you!");
+          break;
+      }
+      drupal_set_message(t($message_user, array('%ip' => $ip)), 'warning', FALSE);
+      // record a message noting the action taken
+      watchdog('cloudflare', $message_watchdog, array('%ip' => $ip));
+    }
+  return $status_code;
+}
+
+function _cloudflare_ban_ip($ip) {
+  $result = _cloudflare_threat_api('ban',$ip);
+  // Get the first line only
+  list($status_code) = explode("\n", $result);
+
+  if ($status_code == "OK") {
+    drupal_set_message(t("You have successfully added %ip to your Cloudflare block list.", array('%ip' => $ip)), 'status', FALSE);
+    // record a message noting the action taken
+    watchdog('cloudflare', t('You have successfully added %ip to your Cloudflare block list.'), array('%ip' => $ip));
+  } else {
+      switch($status_code) {
+        case "E_UNAUTH":
+          $message_user = "Cloudflare response: Authorization could not be completed.";
+          $message_watchdog = t("Cloudflare response: Authorization could not be completed.");
+          break;
+        case "E_INVLDIP":
+          $message_user = "Cloudflare response: Malformed IPv4 address passed in. (IP: %ip)";
+          $message_watchdog = t("Cloudflare response: Malformed IPv4 address passed in. (IP: %ip)");
+          break;
+        case "E_INVLDINPUT":
+          $message_user = "Cloudflare response: Some other input was not valid.";
+          $message_watchdog = t("Cloudflare response: Some other input was not valid.");
+          break;
+        case "E_MAXAPI":
+          $message_user = "Cloudflare response: You have exceeded your allowed number of API calls.";
+          $message_watchdog = t("Cloudflare response: You have exceeded your allowed number of API calls.");
+          break;
+        case "CF_CIDR":
+          $message_user = "Sorry, %ip belongs to Cloudflare and cannot be banned.";
+          $message_watchdog = t("Sorry, %ip belongs to Cloudflare and cannot be banned.");
+          break;
+        case "MY_IP":
+          $message_user = "You dork.  %ip belongs to you!";
+          $message_watchdog = t("You dork.  %ip belongs to you!");
+          break;
+      }
+      drupal_set_message(t($message_user, array('%ip' => $ip)), 'warning', FALSE);
+      // record a message noting the action taken
+      watchdog('cloudflare', $message_watchdog, array('%ip' => $ip));
+    }
+  return $status_code;
+}
+
+/**
+ * TODO: Add a quick ban link on the comments list for a node.
+ * Implementation of hook_link()
+ */
+//function cloudflare_link($type, $comment, $teaser = FALSE) {
+//  $links = array();
+//
+//  // If cloudflare hasn't been configured, don't display link.
+//  if (!_is_cloudflare_configured()) {
+//    return $links;
+//  }
+//
+//  switch($type) {
+//    case 'comment':
+//      $links['cloudflare_ban_ip'] = array(
+//        '#access' => user_access('administer cloudflare'),
+//        'title' => t('ban ip'),
+//        'attributes' => array('title' => t('Ban IP Address in Cloudflare.')),
+//        'href' => "admin/settings/cloudflare/ban/$comment->cid",
+//      );
+//      break;
+//  }
+//  return $links;
+//}
+
+
+/**
+ * Implementation of hook_form_alter()
+ */
+// not ready for prime-time.
+//function cloudflare_form_comment_form_alter(&$form, $form_state) {
+//  //dpm($form);
+//  //dpm($form_state);
+//      
+//  // If cloudflare hasn't been configured, don't display form alterations.
+//  if (!_is_cloudflare_configured()) {
+//    return $form;
+//  }
+//
+//  // If we're not in edit mode, don't display form alterations.
+//  if (!isset($form['cid']['#value'])) {
+//    return $form;
+//  }
+//
+//  $form['cloudflare_actions'] = array(
+//    '#access' => user_access('administer cloudflare'),
+//    '#type' => 'fieldset',
+//    '#title' => t('Cloudflare actions'),
+//    '#collapsible' => FALSE,
+//    '#collapsed' => FALSE,
+//    '#weight' => 22,
+//  );
+//      
+//  $form['cloudflare_actions']['cloudflare_ban_ip'] = array(
+//    '#access' => user_access('administer cloudflare'),
+//    '#type' => 'submit',
+//    '#value' => t('Ban IP'),
+//    '#attributes' => array('title' => t('Ban IP Address in Cloudflare.')),
+//    '#weight' => 23,
+//  );
+//  $form['cloudflare_actions']['cloudflare_ban_ip_delete'] = array(
+//    '#access' => user_access('administer cloudflare'),
+//    '#type' => 'submit',
+//    '#value' => t('Ban IP + Delete Comment'),
+//    '#attributes' => array('title' => t('Ban IP Address in Cloudflare, then delete comment.')),
+//    '#weight' => 24,
+//  );
+//  //$form['cloudflare_actions']['cloudflare_report_spam'] = array(
+//  //  '#access' => user_access('administer cloudflare'),
+//  //  '#type' => 'submit',
+//  //  '#value' => t('Report Spam'),
+//  //  '#attributes' => array('title' => t('Report Spam to Cloudflare')),
+//  //  '#weight' => 25,
+//  //);
+//  //$form['cloudflare_actions']['cloudflare_report_spam_delete'] = array(
+//  //  '#access' => user_access('administer cloudflare'),
+//  //  '#type' => 'submit',
+//  //  '#value' => t('Report Spam + Delete Comment'),
+//  //  '#attributes' => array('title' => t('Report Spam to Cloudflare, then delete comment.')),
+//  //  '#weight' => 26,
+//  //);
+//}
+
+
+/**
+* Perform an action using Cloudflare's Threat API.
+*/
+function _cloudflare_threat_api($action, $ip) {
+  // Retrieve the settings.
+  $cf_settings = _cloudflare_settings();
+  $cf_api_email = $cf_settings['cf_api_email'];
+  $cf_api_key = $cf_settings['cf_api_key'];
+  $cf_ip_ranges = $cf_settings['cf_ip_ranges'];
+  $my_ip = $cf_settings['my_ip'];
+
+  // if the IP being banned is known to belong to Cloudflare, disallow it.
+  foreach ($cf_ip_ranges as $cidr) {
+    if (_cidr_match($ip, $cidr) && $action == "ban") {
+      return "CF_CIDR";
+    }
+  }
+
+  // if the IP being banned belongs to the person submitting this request, disallow it.
+  if ($ip == $my_ip && $action == "ban") {
+    return "MY_IP";
+  }
+
+  $url = "/api.html?a=$action&key=$ip&u=$cf_api_email&tkn=$cf_api_key";
+
+  $opts = array(
+     'http'=>array(
+       'method'=>"GET",
+       'header'=>array("Host: www.cloudflare.com",
+                              "Connection: Close")
+     )
+  );
+  $context = stream_context_create($opts);
+
+  // Open the file using the HTTP headers set above
+  $fc = check_plain(file_get_contents($cf_settings['cf_api_https_host'].$url, false, $context));
+  return $fc;
+}
+
+
+function _cloudflare_spam_api($cid) {
+  // Retrieve the settings.
+  $cf_settings = _cloudflare_settings();
+  $cf_api_email = $cf_settings['cf_api_email'];
+  $cf_api_key = $cf_settings['cf_api_key'];
+  //$cf_ip_ranges = $cf_settings['cf_ip_ranges'];
+  //$my_ip = $cf_settings['my_ip'];
+
+  $comment = comment_load($cid);
+    
+  $comment_body = isset($comment->comment_body[LANGUAGE_NONE][0]) ? $comment->comment_body[LANGUAGE_NONE][0]['value'] : "";
+  
+  $value = array("a" => $comment->name,
+                 "am" => $comment->mail,
+                 "ip" => $comment->hostname,
+                 "con" => substr($comment_body, 0, 350));
+
+  $postdata = http_build_query(array(
+          'evnt_v' => json_encode($value),
+          'u' => $cf_api_email,
+          'tkn' => $cf_api_key,
+          'evnt_t' => 'WP_SPAM'
+          ), '', '&');
+
+  $opts = array('http' =>
+                  array(
+                        'method'  => 'POST',
+                        'header'  => array("Host: www.cloudflare.com",
+                                           "Content-type: application/x-www-form-urlencoded",
+                                           "Content-length: ".strlen($postdata),
+                                           "Connection: Close"),
+                        'content' => $postdata
+                        )
+                );
+  
+  $context  = stream_context_create($opts);
+    
+  $url = "/ajax/external-event.html";
+  
+  // Open the file using the HTTP headers set above
+  $fc = file_get_contents($cf_settings['cf_api_https_host'].$url, false, $context);
+  $result = json_decode($fc);
+  if ($result->result == 'error') {
+    return array("result"=>$result,"options"=>$opts);
+  } elseif ($result->result == 'success') {
+    return array("result"=>$result,"value"=>$value); 
+  } else {
+    return array("result"=>'other',"fc"=>$fc); 
+  }
+}
+
+
+/**
+* Load the cloudflare settings into a static array.
+*/
+function _cloudflare_settings() {
+  static $cloudflare_settings;
+  if (!isset($cloudflare_settings)) {
+    $cloudflare_settings = array(
+       'cf_api_email'=>variable_get('cloudflare_api_email',FALSE),
+       'cf_api_key'=>variable_get('cloudflare_api_key',FALSE),
+       'cf_api_ssl_host'=>"ssl://www.cloudflare.com",
+       'cf_api_https_host'=>"https://www.cloudflare.com",
+       'cf_api_port'=>443,
+       'cf_ip_ranges'=>array("204.93.240.0/24", "204.93.177.0/24", "199.27.128.0/21", "173.245.48.0/20", "103.22.200.0/22", "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20"),
+       'my_ip'=>$_SERVER["REMOTE_ADDR"],
+    );
+  }
+  return $cloudflare_settings;
+}
+
+
+/**
+* Check if Cloudflare has been configured.
+*/
+function _is_cloudflare_configured() {
+  // Retrieve the settings.
+  $cf_settings = _cloudflare_settings();
+  // TRUE if email and api key are configured.
+  $cloudflare_configured = ($cf_settings['cf_api_email']) && ($cf_settings['cf_api_key']);
+  // Set a friendly message to remind administrator to configure the module.
+  if (!$cloudflare_configured && user_access('administer cloudflare')) {
+    drupal_set_message(t('Oops! ').l('Cloudflare','admin/config/people/cloudflare').t(' has not been configured, so we are hiding some nifty features from you. Let\'s get \'er done shall we?'), 'status', FALSE);
+  }
+  return $cloudflare_configured;
+}
+
+
+/**
+* Lookup the hostname/IP Address of the comment using the comment id.
+*/
+function _get_ip_address_from_comment($cid) {
+  $comment = comment_load($cid);
+  return $comment->hostname;
+}
+
+/**
+* Delete comment.
+*/
+function _cloudflare_delete_comment($cid) {
+  $comment = comment_load($cid);
+  
+  // hackity hacky hack: set error reporting to hide errors due to bug report http://drupal.org/node/1761042
+  //error_reporting(E_ALL ^ E_NOTICE);
+  //error_reporting(0);
+
+  $num_deleted = db_delete('comment')
+  ->condition('cid', $cid)
+  ->execute();
+    
+  if($num_deleted > 0) {
+    watchdog('action', t("Comment #%id has been deleted.", array('%id' => $cid)));  
+  }
+}
+
+/**
+* Publish comment.
+*/
+function _cloudflare_publish_comment($cid) {
+  $context['cid'] = $cid;
+  comment_publish_action($comment = null, $context);
+  watchdog('action', t("Comment #%id has been published.", array('%id' => $cid)));
+}
+
+function _cidr_match($ip, $range) {
+    list ($subnet, $bits) = explode('/', $range);
+    $ip = ip2long($ip);
+    $subnet = ip2long($subnet);
+    $mask = -1 << (32 - $bits);
+    $subnet &= $mask; # nb: in case the supplied subnet wasn't correctly aligned
+    return ($ip & $mask) == $subnet;
+}
