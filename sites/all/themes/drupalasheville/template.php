@@ -9,3 +9,11 @@ function drupalasheville_preprocess_page(&$vars) {
     'weight' => 99,
   ));    
 }
+
+function drupalasheville_preprocess_menu_local_task(&$variables) {
+  $link = &$variables['element']['#link'];
+  // check for $_GET['destination'] because drupal_get_destination() always contains at least the current page
+  if ($link['tab_root'] === 'user' && !empty($_GET['destination'])) {
+    $link['localized_options']['query'] = drupal_get_destination();
+  }
+}
