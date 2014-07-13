@@ -1,0 +1,9 @@
+name = Drupal Camp Asheville 2014
+description = Customizations for 2014 Drupal Camp Asheville
+package = Asheville Drupal Users Group
+core = 7.x
+version = 7.x-1.x
+
+;files[] =
+;dependencies[] =
+scripts[] = js/adug_dcavl.js
