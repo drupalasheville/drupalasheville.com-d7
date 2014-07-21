@@ -1,0 +1,213 @@
+<?php
+
+/**
+ * @file
+ * Adds the required Javascript to the checkout completion page to allow
+ * e-commerce statistics tracking through Google Analytics.
+ * 
+ * Refer to http://code.google.com/apis/analytics/docs/gaTrackingEcommerce.html
+ * for documentation on the functions used to submit e-commerce statistics to
+ * Google Analytics.
+ */
+
+/**
+ * Implements hook_enable().
+ */
+function commerce_google_analytics_enable() {
+  $weight = db_query("SELECT weight FROM {system} WHERE name = :module", array(':module' => 'googleanalytics'))->fetchField();
+
+  // Update the weight of the Commerce Google Analytics module
+  // so its hooks get called after the actual Google Analytics module.
+  db_update('system')
+          ->fields(array('weight' => max(1000, $weight + 1)))
+          ->condition('name', 'commerce_google_analytics')
+          ->execute();
+}
+
+/**
+ * Build the e-commerce JS passed to Google Analytics for order tracking.
+ *
+ * @param object $order
+ *   The fully loaded order object to convert into GA JS.
+ * 
+ * @return string
+ *   The JS that should be added to the page footer.
+ */
+function commerce_google_analytics_ecommerce_js($order) {
+  $script = '';
+
+  if (!($order instanceof EntityMetadataWrapper)) {
+    $order = entity_metadata_wrapper('commerce_order', $order);
+  }
+
+  $tax_sum = 0;
+  if (module_exists('commerce_tax')) {
+    foreach (commerce_tax_rates() as $name => $tax_rate) {
+      if ($tax_rate['price_component']) {
+        $tax_component = commerce_price_component_load($order->commerce_order_total->value(), $tax_rate['price_component']);
+        // Some taxes may not have been applied.
+        if (isset($tax_component[0]['price']['amount'])) {
+          $tax_sum += commerce_currency_amount_to_decimal($tax_component[0]['price']['amount'], $tax_component[0]['price']['currency_code']);
+        }
+      }
+    }
+  }
+
+  $shipping = 0;
+  if (module_exists('commerce_shipping')) {
+    foreach ($order->commerce_line_items as $item) {
+      if ($item->type->value() == 'shipping') {
+        $shipping += commerce_currency_amount_to_decimal($item->commerce_total->amount->value(), $item->commerce_total->currency_code->value());
+      }
+    }
+  }
+
+  $profile = NULL;
+  if (isset($order->commerce_customer_billing) && $order->commerce_customer_billing->value()) {
+    $profile = commerce_customer_profile_load($order->commerce_customer_billing->profile_id->value());
+  }
+  elseif (isset($order->commerce_customer_shipping) && $order->commerce_customer_shipping->value()) {
+    $profile = commerce_customer_profile_load($order->commerce_customer_shipping->profile_id->value());
+  }
+
+  $address = NULL;
+  if ($profile) {
+    $profile_wrapper = entity_metadata_wrapper('commerce_customer_profile', $profile);
+    if (isset($profile_wrapper->commerce_customer_address)) {
+      $address = $profile_wrapper->commerce_customer_address->value();
+      $address_field = addressfield_generate($address, array('address'), array('mode' => 'render'));
+
+      // Get country human readable name.
+      $country_code = $address['country'];
+      if (!empty($country_code)) {
+        $address['country'] = $address_field['country']['#options'][$country_code];
+      }
+
+      // Get state human readable name - but only if there was a select list.
+      if (!empty($address_field['locality_block']['administrative_area']['#options'])) {
+        $state_code = $address['administrative_area'];
+        $address['administrative_area'] = $address_field['locality_block']['administrative_area']['#options'][$state_code];
+      }
+    }
+  }    
+
+  // Build the transaction arguments.
+  $transaction = array(
+    'order_id' => $order->order_id->value(),
+    'store' => variable_get('site_name', 'Ubercart'),
+    'total' => commerce_currency_amount_to_decimal($order->commerce_order_total->amount->value(), $order->commerce_order_total->currency_code->value()),
+    'tax' => $tax_sum,
+    'shipping' => $shipping,
+    'city' => (isset($address['locality']) ? $address['locality'] : ''),
+    'state' => (isset($address['administrative_area']) ? $address['administrative_area'] : ''),
+    'country' => (isset($address['country']) ? $address['country'] : ''),
+  );
+
+  // Allow modules to alter the transaction arguments.
+  drupal_alter('commerce_google_analytics_transaction', $transaction, $order);
+
+  // Put the arguments into an array that is safe to implode directly.
+  $args = array(
+    '"' . $transaction['order_id'] . '"',
+    drupal_json_encode($transaction['store']),
+    '"' . $transaction['total'] . '"',
+    '"' . $transaction['tax'] . '"',
+    '"' . $transaction['shipping'] . '"',
+    drupal_json_encode($transaction['city']),
+    drupal_json_encode($transaction['state']),
+    drupal_json_encode($transaction['country']),
+  );
+
+  // Add the transaction line to the JS.
+  $script .= '_gaq.push(["_addTrans", ' . implode(', ', $args) . ']);';
+
+  // Loop through the products on the order.
+  foreach ($order->commerce_line_items as $line_item) {
+    $category = '';
+
+    // TODO: Add find a category for the line item.
+    if (empty($category)) {
+      $category = t('No category');
+    }
+
+    $properties = $line_item->getPropertyInfo();
+    if (isset($properties['commerce_product']) && !empty($line_item->value()->commerce_product[LANGUAGE_NONE][0]['product_id'])) {
+      // Build the item arguments.
+      $item = array(
+        'order_id' => $order->order_id->value(),
+        'sku' => $line_item->commerce_product->sku->value(),
+        'name' => $line_item->commerce_product->title->value(),
+        'category' => $category,
+        'price' => commerce_currency_amount_to_decimal($line_item->commerce_unit_price->amount->value(), $line_item->commerce_unit_price->currency_code->value()),
+        'qty' => $line_item->quantity->value(),
+      );
+    }
+    else {
+      $item = array(
+        'order_id' => $order->order_id->value(),
+        'sku' => $line_item->type->value(),
+        'name' => $line_item->line_item_label->value(),
+        'category' => $category,
+        'price' => commerce_currency_amount_to_decimal($line_item->commerce_unit_price->amount->value(), $line_item->commerce_unit_price->currency_code->value()),
+        'qty' => $line_item->quantity->value(),
+      );
+    }
+
+    // Allow modules to alter the item arguments.
+    $context = array(
+      'transaction' => $transaction,
+      'order' => $order,
+    );
+    drupal_alter('commerce_google_analytics_item', $item, $line_item, $context);
+
+    // Put the arguments into an array that is safe to implode directly.
+    $args = array(
+      '"' . $item['order_id'] . '"',
+      drupal_json_encode($item['sku']),
+      drupal_json_encode($item['name']),
+      drupal_json_encode((string) $item['category']),
+      '"' . $item['price'] . '"',
+      '"' . $item['qty'] . '"',
+    );
+
+    // Add the item line to the JS.
+    $script .= '_gaq.push(["_addItem", ' . implode(', ', $args) . ']);';
+  }
+
+  // Add the function to submit the transaction to GA.
+  $script .= '_gaq.push(["_trackTrans"]);';
+
+  return $script;
+}
+
+/**
+ * Callback for the rules action which creates the javascript.
+ * 
+ * Uses the $order and stores the script in the session to inject it using 
+ * hook_init on the next page request.
+ * 
+ * @param object $order
+ *   The order object
+ */
+function commerce_google_analytics_send_order($order) {
+  // Get Scope of the google analytics module.
+  $scope = variable_get('googleanalytics_js_scope', 'footer');
+  // Add the javascript only when we are on the order complete page.
+  $script = commerce_google_analytics_ecommerce_js($order);
+  $_SESSION['ga_push_commerce'] = $script;
+}
+
+/**
+ * Implements hook_init().
+ */
+function commerce_google_analytics_init() {
+  if (!empty($_SESSION['ga_push_commerce'])) {
+    $script = $_SESSION['ga_push_commerce'];
+    $scope = variable_get('googleanalytics_js_scope', 'footer');
+    drupal_add_js($script, array(
+      'type' => 'inline',
+      'scope' => $scope, 'preprocess' => FALSE,
+      'weight' => 10));
+    unset($_SESSION['ga_push_commerce']);
+  }
+}

@@ -1,0 +1,25 @@
+// $Id$
+
+--- version 2.1.1 ---
+  LiveChat will not be displayed on admin pages
+
+--- version 2.1 ---
+  Compatibility with chat window embedded on website
+
+--- version 2.0.2 ---
+  Fixed chat button not installed warning
+
+--- version 2.0.1 ---
+  Some Drupal 7 compatibility fixes
+
+--- version 2.0.0 ---
+  Rewritten plugin code, Drupal 7 compatibility
+
+--- version 1.0.2 ---
+  Drupal coding standards improvements
+
+--- version 1.0.1 ---
+  Implemented Drupal coding standards in module files
+
+--- version 1.0.0 ---
+  Hello, world!

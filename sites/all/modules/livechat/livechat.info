@@ -1,0 +1,7 @@
+; $Id$
+name = "LiveChat"
+description = "LiveChat software for Drupal 7"
+version = "2.1"
+core = "7.x"
+
+files[] = livechat.module

@@ -1,0 +1,31 @@
+<?php
+
+// $Id$
+
+require_once drupal_get_path('module', 'livechat') . '/Livechat.php';
+
+/*
+ * @file
+ * Drupal Module: livechat
+ */
+
+function livechat_menu()
+{
+	$items['admin/settings/livechat'] = array(
+		'title' => 'LiveChat',
+		'description' => 'Integrate LiveChat software with your website.',
+		'page callback' => 'drupal_get_form',
+		'page arguments' => array('livechat_admin_settings_form'),
+		'access arguments' => array('administer livechat'),
+		'file' => 'livechat.admin.inc',
+		'type' => MENU_NORMAL_ITEM,
+	);
+
+	return $items;
+}
+
+function livechat_init()
+{
+	if (!path_is_admin(current_path()))
+		Livechat::get_instance()->install_codes();
+}

@@ -6926,3 +6926,40 @@ table .checkbox input[type="checkbox"] {
 .become-sponsor-table table th:first-child{
   width: 16%;
 }
+
+.sponsor-page h3{
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.view-cod-sponsors .view-content ul{
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.view-cod-sponsors .view-content ul:after{
+  clear: both;
+  content: '';
+  display: block;
+  height: 0;
+  visibility: hidden;
+}
+
+.view-cod-sponsors .view-content ul li.views-row{
+  margin: 0 25px 15px 0;
+  padding: 0;
+  list-style: none;
+  float: left;
+  text-align: center;
+}
+
+.view-cod-sponsors .view-content ul li.views-row .views-field-field-sponsor-logo{
+  width: 220px;
+  height: 220px;
+}
+
+.view-cod-sponsors .view-content ul li.views-row .views-field-title{
+  font-weight: 700;
+  font-size: 20px;
+  margin: 10px 0 20px;
+}

@@ -1,0 +1,50 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Installation file for LiveChat module.
+ */
+
+define('LIVECHAT_PHP_VERSION', '5.0');
+
+function livechat_requirements($phase) {
+
+  $requirements = array();
+  // Ensure translations don't break at install time
+  $t = get_t();
+
+  if ($phase == 'install') {
+    // Test PHP version
+    $requirements['php'] = array(
+      'title' => $t('PHP'),
+      'value' => ($phase == 'runtime') ? l(phpversion(), 'admin/logs/status/php') : phpversion(),
+    );
+    if (version_compare(PHP_VERSION, LIVECHAT_PHP_VERSION) < 0) {
+      $requirements['php']['description'] = $t('Your PHP installation is too old. LiveChat requires at least PHP %version.', array('%version' => LIVECHAT_PHP_VERSION));
+      $requirements['php']['severity'] = REQUIREMENT_ERROR;
+    }
+  }
+  elseif ($phase == 'runtime') {
+    // Raise warning if LiveChat user account has not been set yet.
+    $livechat = Livechat::get_instance();
+    if ($livechat->is_installed() == FALSE) {
+      $requirements['livechat'] = array(
+        'title' => t('LiveChat'),
+        'description' => t('LiveChat is not properly configured. Please go to <a href="@url">LiveChat settings</a>.', array('@url' => url('admin/settings/livechat'))),
+        'severity' => REQUIREMENT_ERROR,
+        'value' => t('Not configured'),
+      );
+    }
+  }
+
+  return $requirements;
+}
+
+function livechat_install() {
+  variable_set('livechat_license', '0');
+}
+
+function livechat_uninstall() {
+  variable_del('livechat_license');
+}
