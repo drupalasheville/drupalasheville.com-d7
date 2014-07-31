@@ -1,0 +1,46 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestUpdatePathWithContentWebTestCase.
+ */
+
+/**
+ * Tests Payment's update path.
+ */
+class PaymentTestUpdatePathWithContentWebTestCase extends UpdatePathTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name'  => 'Update path (with existing content and configuration)',
+      'group' => 'Payment',
+      'dependencies' => array('payment', 'paymentform', 'paymentmethodbasic', 'paymentreference'),
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp() {
+    $this->profile = 'testing';
+    $this->databaseDumpFiles = array(
+      drupal_get_path('module', 'payment') . '/../payment-database-dump.php',
+      drupal_get_path('module', 'payment') . '/../payment-database-dump-content.php',
+    );
+    parent::setUp();
+    // Re-register the autoload functions that were unregistered by
+    // UpdatePathTestCase::setUp(), because it also loads some module files
+    // that work with classes.
+    spl_autoload_register('drupal_autoload_class');
+    spl_autoload_register('drupal_autoload_interface');
+    registry_rebuild();
+  }
+
+  /**
+   * Test a successful upgrade.
+   */
+  function testPaymentUpgrade() {
+    $this->assertTrue($this->performUpgrade(), 'The update was completed successfully.');
+  }
+}

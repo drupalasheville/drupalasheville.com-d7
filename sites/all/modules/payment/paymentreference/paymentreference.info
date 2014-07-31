@@ -1,0 +1,13 @@
+name = Payment Reference Field
+description = Provides a field to add payments to entities.
+core = 7.x
+dependencies[] = currency_api
+dependencies[] = field
+dependencies[] = payment
+package = Payment
+; Information added by Drupal.org packaging script on 2014-07-02
+version = "7.x-1.10+1-dev"
+core = "7.x"
+project = "payment"
+datestamp = "1404314928"
+

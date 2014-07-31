@@ -1,0 +1,121 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentformTestFieldWebTestCase.
+ */
+
+/**
+ * Tests the paymentform field.
+ */
+class PaymentformTestFieldWebTestCase extends PaymentformWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment form field',
+      'group' => 'Payment Form Field',
+    );
+  }
+
+  /**
+   * Test the paymentform field validation.
+   */
+  function testPaymentformFieldValidation() {
+    $node = $this->DrupalCreateNode(array(
+      'type' => $this->content_type->type,
+    ));
+    $line_item_data = array();
+    $node->field_paymentform[LANGUAGE_NONE][0] = &$line_item_data;
+
+    // Test that a non-float amount is invalid.
+    $line_item_data = array(
+      'amount' => 2,
+    ) + $this->PaymentLineItemData;
+    $message = "The <em>Payment form</em> field's validation throws an error if the amount is no float";
+    try {
+      field_attach_validate('node', $node);
+      $this->assertTrue(FALSE, $message);
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($this->fieldValidationExceptionError($e, 'paymentform_line_item_amount_no_float'), $message);
+    }
+
+    // Test the machine name, which cannot be empty.
+    $line_item_data = array(
+      'name' => '',
+    ) + $this->PaymentLineItemData;
+    $message = "The <em>Payment form</em> field's validation throws an error if the machine name is empty";
+    try {
+      field_attach_validate('node', $node);
+      $this->assertTrue(FALSE, $message);
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($this->fieldValidationExceptionError($e, 'paymentform_line_item_name_empty'), $message);
+    }
+
+    // Test that a non-integer quantity is invalid.
+    $line_item_data = array(
+      'quantity' => 1.0,
+    ) + $this->PaymentLineItemData;
+    $message = "The <em>Payment form</em> field's validation throws an error if the quantity amount is no integer";
+    try {
+      field_attach_validate('node', $node);
+      $this->assertTrue(FALSE, $message);
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($this->fieldValidationExceptionError($e, 'paymentform_line_item_quantity_no_integer'), $message);
+    }
+    // Test that a negative quantity is invalid.
+    $line_item_data = array(
+      'quantity' => -1,
+    ) + $this->PaymentLineItemData;
+    $message = "The <em>Payment form</em> field's validation throws an error if the quantity is negative";
+    try {
+      field_attach_validate('node', $node);
+      $this->assertTrue(FALSE, $message);
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($this->fieldValidationExceptionError($e, 'paymentform_line_item_quantity_negative'), $message);
+    }
+
+    // Test that a non-float tax rate is invalid.
+    $line_item_data = array(
+      'tax_rate' => 2,
+    ) + $this->PaymentLineItemData;
+    $message = "The <em>Payment form</em> field's validation throws an error if the tax rate is no float";
+    try {
+      field_attach_validate('node', $node);
+      $this->assertTrue(FALSE, $message);
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($this->fieldValidationExceptionError($e, 'paymentform_line_item_tax_rate_no_float'), $message);
+    }
+    // Test that a negative tax rate is invalid.
+    $line_item_data = array(
+      'tax_rate' => -1.0,
+    ) + $this->PaymentLineItemData;
+    $message = "The <em>Payment form</em> field's validation throws an error if the tax rate is negative";
+    try {
+      field_attach_validate('node', $node);
+      $this->assertTrue(FALSE, $message);
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($this->fieldValidationExceptionError($e, 'paymentform_line_item_tax_rate_negative'), $message);
+    }
+  }
+
+  /**
+   * Test the paymentform field storage.
+   */
+  function testPaymentformFieldStorage() {
+    $node = $this->drupalCreateNode(array(
+      'type' => $this->content_type->type,
+    ));
+    $node->field_paymentform[LANGUAGE_NONE][0] = $this->PaymentLineItemData;
+    node_save($node);
+    $node = node_load($node->nid, NULL, TRUE);
+    $diff = array_diff_assoc($node->field_paymentform[LANGUAGE_NONE][0], $this->PaymentLineItemData);
+    $this->assertTrue(is_array($diff) && empty($diff), 'Payment line item data is saved and loaded correctly.');
+  }
+}

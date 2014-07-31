@@ -1,0 +1,436 @@
+<?php
+
+/**
+ * @file
+ * Installation and uninstallation functions.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function payment_schema() {
+  $schema['payment_line_item'] = array(
+    'fields' => array(
+      'amount' => array(
+        'type' => 'float',
+        'size' => 'big',
+        'not null' => TRUE,
+      ),
+      'amount_total' => array(
+        'type' => 'float',
+        'size' => 'big',
+        'not null' => TRUE,
+      ),
+      'description' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'description_arguments' => array(
+        'type' => 'blob',
+        'size' => 'big',
+        'serialize' => TRUE,
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+      ),
+      'pid' => array(
+        'description' => 'The {payment}.pid this line item belongs to.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'quantity' => array(
+        'type' => 'int',
+        'default' => 1,
+        'not null' => TRUE,
+      ),
+      'tax_rate' => array(
+        'type' => 'float',
+        'size' => 'big',
+        'default' => 0.0,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('name', 'pid'),
+    'foreign keys' => array(
+      'pid' => array(
+        'table' => 'payment',
+        'columns' => array(
+          'pid' => 'pid',
+        ),
+      ),
+    ),
+    'indexes' => array(
+      'pid' => array('pid'),
+    ),
+  );
+  $schema['payment'] = array(
+    'fields' => array(
+      'context' => array(
+        'type' => 'varchar',
+        'length' => 255,
+      ),
+      'context_data' => array(
+        'type' => 'blob',
+        'size' => 'big',
+        'serialize' => TRUE,
+      ),
+      'currency_code' => array(
+        'type' => 'varchar',
+        'length' => 3,
+        'default' => 'XXX',
+        'not null' => TRUE,
+      ),
+      'description' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'description_arguments' => array(
+        'type' => 'blob',
+        'size' => 'big',
+        'serialize' => TRUE,
+        'not null' => TRUE,
+      ),
+      'finish_callback' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'pid' => array(
+        'type' => 'serial',
+      ),
+      'pmid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+      ),
+      'psiid_first' => array(
+        'description' => "The {payment_status_item}.psiid of this payment's first status item.",
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+      ),
+      'psiid_last' => array(
+        'description' => "The {payment_status_item}.psiid of this payment's most recent status item.",
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid this payment belongs to.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'foreign keys' => array(
+      'pmid' => array(
+        'table' => 'payment_method',
+        'columns' => array(
+          'pmid' => 'pmid',
+        ),
+      ),
+      'psiid_last' => array(
+        'table' => 'payment_status_item',
+        'columns' => array(
+          'psiid_last' => 'psiid',
+        ),
+      ),
+      'psiid_first' => array(
+        'table' => 'payment_status_item',
+        'columns' => array(
+          'psiid_first' => 'psiid',
+        ),
+      ),
+      'uid' => array(
+        'table' => 'user',
+        'columns' => array(
+          'uid' => 'uid',
+        ),
+      ),
+    ),
+    'indexes' => array(
+      'pid' => array('pid'),
+    ),
+    'primary key' => array('pid'),
+  );
+  $schema['payment_status_item'] = array(
+    'fields' => array(
+      'status' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'created' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+      'pid' => array(
+        'description' => 'The payment ID.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'psiid' => array(
+        'type' => 'serial',
+      ),
+    ),
+    'foreign keys' => array(
+      'pid' => array(
+        'table' => 'payment',
+        'columns' => array(
+          'pid' => 'pid',
+        ),
+      ),
+    ),
+    'indexes' => array(
+      'pid' => array('pid'),
+    ),
+    'primary key' => array('psiid'),
+  );
+  $schema['payment_method'] = array(
+    'fields' => array(
+      'controller_class_name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'enabled' => array(
+        'type' => 'int',
+        'size' => 'tiny',
+        'default' => 0,
+        'not null' => TRUE,
+      ),
+      'module' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'pmid' => array(
+        'type' => 'serial',
+      ),
+      'status' => array(
+        'type' => 'int',
+        'size' => 'tiny',
+        'default' => ENTITY_CUSTOM,
+        'not null' => TRUE,
+      ),
+      'title_generic' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'title_specific' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid this {payment_method} belongs to.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'foreign keys' => array(
+      'uid' => array(
+        'table' => 'user',
+        'columns' => array(
+          'uid' => 'uid',
+        ),
+      ),
+    ),
+    'primary key' => array('pmid'),
+    'unique keys' => array(
+      'pmid' => array('pmid'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Adds the psiid_first field to {payment}.
+ *
+ * @see payment_update_7105()
+ */
+function payment_update_7100(&$sandbox) {
+  db_add_field('payment', 'psiid_first', array(
+    'type' => 'int',
+    'unsigned' => TRUE,
+    'default' => 0,
+    'not null' => TRUE,
+  ));
+}
+
+/**
+ * Adds the amount_total field to {payment_line_item}.
+ *
+ * @see payment_update_7104()
+ */
+function payment_update_7101(&$sandbox) {
+  db_add_field('payment_line_item', 'amount_total', array(
+    'type' => 'float',
+    'size' => 'big',
+  ));
+}
+
+/**
+ * Adds the description_arguments field to {payment}.
+ */
+function payment_update_7102(&$sandbox) {
+  // A blob column cannot have a default value, so we need to update existing
+  // rows in a separate update query. However, making the column NOT NULL from
+  // the start causes data truncation errors, so we do that afterwards.
+  db_add_field('payment', 'description_arguments', array(
+    'type' => 'blob',
+    'size' => 'big',
+    'serialize' => TRUE,
+  ));
+  db_update('payment')
+    ->fields(array(
+      'description_arguments' => 'a:0:{}',
+    ))
+    ->execute();
+  db_change_field('payment', 'description_arguments', 'description_arguments', array(
+    'type' => 'blob',
+    'size' => 'big',
+    'serialize' => TRUE,
+    'not null' => TRUE,
+  ));
+}
+
+/**
+ * Sets the exportable status for existing payment methods.
+ */
+function payment_update_7103(array &$sandbox) {
+  db_update('payment_method')
+    ->condition('module', 'payment')
+    ->fields(array(
+      'status' => ENTITY_CUSTOM,
+    ))
+    ->execute();
+}
+
+/**
+ * Updates NOT NULL and default value configuration for some database columns.
+ */
+function payment_update_7104(array &$sandbox) {
+  db_change_field('payment', 'currency_code', 'currency_code', array(
+    'type' => 'varchar',
+    'length' => 3,
+    'default' => 'XXX',
+    'not null' => TRUE,
+  ));
+  db_change_field('payment', 'description', 'description', array(
+    'type' => 'varchar',
+    'length' => 255,
+    'not null' => TRUE,
+  ));
+  db_change_field('payment', 'finish_callback', 'finish_callback', array(
+    'type' => 'varchar',
+    'length' => 255,
+    'not null' => TRUE,
+  ));
+  db_change_field('payment_line_item', 'amount', 'amount', array(
+    'type' => 'float',
+    'size' => 'big',
+    'not null' => TRUE,
+  ));
+  db_query('UPDATE {payment_line_item} SET amount_total = amount * quantity * (tax_rate + 1)');
+  db_change_field('payment_line_item', 'amount_total', 'amount_total', array(
+    'type' => 'float',
+    'size' => 'big',
+    'not null' => TRUE,
+  ));
+  db_change_field('payment_line_item', 'quantity', 'quantity', array(
+    'type' => 'int',
+    'default' => 1,
+    'not null' => TRUE,
+  ));
+  db_change_field('payment_line_item', 'tax_rate', 'tax_rate', array(
+    'type' => 'float',
+    'size' => 'big',
+    'default' => 0.0,
+    'not null' => TRUE,
+  ));
+  db_change_field('payment_method', 'enabled', 'enabled', array(
+    'type' => 'int',
+    'size' => 'tiny',
+    'default' => 0,
+    'not null' => TRUE,
+  ));
+  db_change_field('payment_method', 'status', 'status', array(
+    'type' => 'int',
+    'size' => 'tiny',
+    'default' => ENTITY_CUSTOM,
+    'not null' => TRUE,
+  ));
+  db_change_field('payment_status_item', 'status', 'status', array(
+    'type' => 'varchar',
+    'length' => 255,
+    'not null' => TRUE,
+  ));
+  db_change_field('payment_status_item', 'created', 'created', array(
+    'type' => 'int',
+    'not null' => TRUE,
+  ));
+}
+
+/**
+ * Sets {payment}.psiid_first values.
+ */
+function payment_update_7105(array &$sandbox) {
+  // Find out how many transactions need to be converted in total and during
+  // this run.
+  $per_run = 100;
+  if (!isset($sandbox['count'])) {
+    $sandbox['count'] = db_select('payment')
+      ->countQuery()
+      ->execute()
+      ->fetchField();
+  }
+  if (!isset($sandbox['run'])) {
+    $sandbox['run'] = 0;
+  }
+  else {
+    $sandbox['run']++;
+  }
+  if ($sandbox['count']) {
+    $sandbox['#finished'] = 1 / ceil($sandbox['count'] / (($sandbox['run'] + 1) * $per_run));
+
+    // Load the PIDs for this run.
+    $pids = db_select('payment')
+      ->fields('payment', array('pid'))
+      ->range($sandbox['run'] * $per_run, $per_run)
+      ->execute()
+      ->fetchCol();
+
+    // Load the PIIDs and PIDs for this run.
+    $psiid_first = db_select('payment_status_item')
+      ->fields('payment_status_item', array('pid', 'psiid'))
+      ->condition('pid', $pids)
+      ->execute()
+      ->fetchAllKeyed();
+
+    foreach ($psiid_first as $pid => $psiid) {
+      $query = db_update('payment')
+        ->condition('pid', $pid)
+        ->fields(array(
+          'psiid_first' => $psiid,
+        ))
+        ->execute();
+    }
+  }
+}

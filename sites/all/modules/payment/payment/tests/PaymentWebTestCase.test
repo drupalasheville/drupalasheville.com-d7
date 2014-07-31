@@ -1,0 +1,172 @@
+<?php
+
+/**
+ * Contains class PaymentWebTestCase.
+ */
+
+/**
+ * Provides reusable code for testing payments and payment methods.
+ */
+class PaymentWebTestCase extends DrupalWebTestCase {
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    $this->profile = 'testing';
+    parent::setUp($modules);
+  }
+
+  /**
+   * Create, save, and return a Payment.
+   *
+   * @param integer $uid
+   *   The user ID of the payment's owner.
+   * @param PaymentMethod $payment_method
+   *   An optional payment method to set. Defaults to PaymentMethodUnavailable.
+   *
+   * @return Payment
+   */
+  static function paymentCreate($uid, PaymentMethod $payment_method = NULL) {
+    $payment_method = $payment_method ? $payment_method : new PaymentMethodUnavailable;
+    $payment = new Payment(array(
+      'currency_code' => 'XXX',
+      'description' => 'This is the payment description',
+      'finish_callback' => 'payment_test_finish_callback',
+      'method' => $payment_method,
+      'uid' => $uid,
+    ));
+    $payment->setLineItem(new PaymentLineItem(array(
+      'name' => 'foo',
+      'amount' => 1.0,
+      'tax_rate' => 0.1,
+    )));
+
+    return $payment;
+  }
+
+  /**
+   * Create, save, and return a PaymentMethod.
+   *
+   * @param integer $uid
+   *   The user ID of the payment method's owner.
+   * @param PaymentMethodController $controller
+   *   An optional controller to set. Defaults to
+   *   PaymentMethodControllerUnavailable.
+   *
+   * @return PaymentMethod
+   */
+  static function paymentMethodCreate($uid, PaymentMethodController $controller = NULL) {
+    $name = self::randomName();
+    $controller = $controller ? $controller : payment_method_controller_load('PaymentMethodControllerUnavailable');
+    $payment_method = new PaymentMethod(array(
+      'controller' => $controller,
+      'controller_data' => $controller->controller_data_defaults,
+      'name' => $name,
+      'title' => $name,
+      'uid' => $uid,
+    ));
+
+    return $payment_method;
+  }
+
+  /**
+   * Test an entity's permissions.
+   *
+   * @param object $entity
+   *   This does not have to be a 'real' entity registered with
+   *   hook_entity_info().
+   * @param string $entity_type_title
+   *   The entity's human-readable type.
+   * @param string $callback
+   *   The name of the access function, which must accept the operation, the
+   *   entity and a user account as arguments.
+   * @param string $operation
+   *   The operation to perform on the entity.
+   * @param array $permissions
+   *   Permissions to grant authenticated users before testing their access.
+   *   Defaults to an empty array.
+   * @param array $access
+   *   An array of arrays with the following items:
+   *   - anonymous (boolean): Whether anonymous users should be able to perform
+   *     the operation. Defaults to FALSE.
+   *   - root (boolean): Whether the root user (with UID 1) should be able to
+   *     perform the operation. Defaults to TRUE.
+   *   - authenticated_with_permissions (boolean): Whether authenticated users
+   *     that have all the required permissions should be able to perform the
+   *     operation. Defaults to TRUE.
+   *   - authenticated_without_permissions (boolean): Whether authenticated
+   *     users that do not have all the required permissions should be able to
+   *     perform the operation. Defaults to FALSE.
+   *
+   * @return NULL
+   */
+  function assertEntityPermission($entity, $entity_type_title, $callback, $operation, array $permissions = array(), array $access = array()) {
+    $user_access_permissions = &drupal_static('user_access');
+
+    // Create the user accounts.
+    $anonymous = drupal_anonymous_user();
+    $root = drupal_anonymous_user();
+    $root->uid = 1;
+    $authenticated = drupal_anonymous_user();
+    $authenticated->uid = 2;
+
+    $comment = $entity && isset($entity->uid) ? ' with UID ' . $entity->uid : NULL;
+
+    // Merge in defaults.
+    $access += array(
+      'anonymous' => FALSE,
+      'root' => TRUE,
+      'authenticated_with_permissions' => TRUE,
+      'authenticated_without_permissions' => FALSE,
+    );
+
+    // Test anonymous users.
+    $can = $access['anonymous'] ? 'can' : 'cannot';
+    $this->assertEqual($callback($operation, $entity, $anonymous), $access['anonymous'], "An anonymous user $can perform operation <strong>$operation</strong> on a <strong>$entity_type_title</strong>$comment without permission(s) " . $this->permissionLabel($permissions));
+
+    // // Test UID 1.
+    $can = $access['root'] ? 'can' : 'cannot';
+    $this->assertEqual($callback($operation, $entity, $root), $access['root'], "The root user (UID 1) $can perform operation <strong>$operation</strong> on a <strong>$entity_type_title</strong>$comment without permission(s) " . $this->permissionLabel($permissions));
+
+    // Test authenticated users with all permissions.
+    if ($permissions) {
+      $user_access_permissions[2] = array_fill_keys($permissions, TRUE);
+      $can = $access['authenticated_with_permissions'] ? 'can' : 'cannot';
+      $this->assertEqual($callback($operation, $entity, $authenticated), $access['authenticated_with_permissions'], "An authenticated user (UID 2) $can perform operation <strong>$operation</strong> on a <strong>$entity_type_title</strong>$comment with permission(s) " . $this->permissionLabel($permissions));
+    }
+
+    // Test authenticated users without all permissions.
+    foreach ($permissions as $i => $permission) {
+      $assert_permissions = $permissions;
+      unset($assert_permissions[$i]);
+      $user_access_permissions[2] = array_fill_keys($assert_permissions, TRUE);
+      $can = $access['authenticated_without_permissions'] ? 'can' : 'cannot';
+      $operation = $operation;
+      $this->assertFalse($callback($operation, $entity, $authenticated), "An authenticated user (UID 2) $can perform operation <strong>$operation</strong> on a <strong>$entity_type_title</strong>$comment without permission " . $this->permissionLabel(array($permissions[$i])));
+    }
+  }
+
+  /**
+   * Return permissions' human-readable titles and their machine names.
+   *
+   * @param array $permissions
+   *   The permissions' machine names.
+   *
+   * @return string
+   */
+  function permissionLabel(array $permissions) {
+    $info = &drupal_static(__CLASS__ . '_permission');
+
+    if (is_null($info)) {
+      $info = module_invoke_all('permission');
+    }
+
+    $labels = array();
+    foreach ($permissions as $permission) {
+      $labels[] = '<strong>' . $info[$permission]['title'] . ' (' . $permission . ')</strong>';
+    }
+
+    return implode(', ', $labels);
+  }
+}

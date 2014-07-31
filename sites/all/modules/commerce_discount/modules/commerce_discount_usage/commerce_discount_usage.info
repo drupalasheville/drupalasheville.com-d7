@@ -1,0 +1,17 @@
+name = Commerce Discount Usage
+description = Provide usage tracking and limits for Commerce Discounts
+package = Commerce (contrib)
+core = 7.x
+
+; Dependencies
+dependencies[] = commerce_discount
+
+; Views handlers
+files[] = includes/views/handlers/commerce_discount_usage_handler_field_commerce_discount_analytics.inc
+
+; Information added by Drupal.org packaging script on 2014-07-18
+version = "7.x-1.0-alpha3+35-dev"
+core = "7.x"
+project = "commerce_discount"
+datestamp = "1405674528"
+

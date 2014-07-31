@@ -1,0 +1,50 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestUnavailableWebTestCase.
+ */
+
+/**
+ * Test unavailable payment methods and payment methods controllers.
+ */
+class PaymentTestUnavailableWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Unavailable payment methods and payment method controllers',
+      'group' => 'Payment',
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules = array('payment', 'paymentmethodbasic'));
+  }
+
+  /**
+   * Test unavailable payment methods and payment method controllers.
+   */
+  function testUnavailable() {
+    // Set a non-existing controller;
+    $controller = payment_method_controller_load('PaymentMethodBasicController');
+    $payment_method = $this->paymentMethodCreate(1, $controller);
+    entity_save('payment_method', $payment_method);
+
+    // Test disabling a module that provides a payment method controller.
+    module_disable(array('paymentmethodbasic'));
+    drupal_static_reset();
+    $payment = $this->paymentCreate(1, $payment_method);
+    entity_save('payment', $payment);
+    $payment = entity_load_single('payment', $payment->pid);
+    $this->assertEqual($payment->method->controller->name, 'PaymentMethodControllerUnavailable', 'When loading a payment method, if its controller unavailable, it is replaced by PaymentMethodControllerUnavailable.');
+
+    // Test deleting a payment method.
+    entity_delete('payment_method', $payment->method->pmid);
+    $payment = entity_load_unchanged('payment', $payment->pid);
+    $this->assertTrue(is_a($payment->method, 'PaymentMethodUnavailable'), 'When loading a payment, if its payment method is unavailable, it is replaced by PaymentMethodUnavailable.');
+  }
+}

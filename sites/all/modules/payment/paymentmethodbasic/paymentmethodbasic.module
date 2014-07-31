@@ -1,0 +1,178 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations and shared functions.
+ */
+
+/**
+ * Implements hook_payment_method_controller_info().
+ */
+function paymentmethodbasic_payment_method_controller_info() {
+  return array('PaymentMethodBasicController');
+}
+
+/**
+ * Implements hook_entity_load().
+ */
+function paymentmethodbasic_entity_load(array $entities, $entity_type) {
+if ($entity_type == 'payment_method') {
+    $pmids = array();
+    foreach ($entities as $payment_method) {
+      if ($payment_method->controller->name == 'PaymentMethodBasicController') {
+        $pmids[] = $payment_method->pmid;
+      }
+    }
+    if ($pmids) {
+      $query = db_select('paymentmethodbasic')
+        ->fields('paymentmethodbasic')
+        ->condition('pmid', $pmids);
+      $result = $query->execute();
+      while ($data = $result->fetchAssoc()) {
+        $payment_method = $entities[$data['pmid']];
+        $payment_method->controller_data = (array) $data;
+        unset($payment_method->controller_data['pmid']);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_ACTION().
+ */
+function paymentmethodbasic_payment_method_insert(PaymentMethod $payment_method) {
+  if ($payment_method->controller->name == 'PaymentMethodBasicController') {
+    $payment_method->controller_data += $payment_method->controller->controller_data_defaults;
+    $query = db_insert('paymentmethodbasic');
+    $values = array_merge($payment_method->controller_data, array(
+      'pmid' => $payment_method->pmid,
+    ));
+    $query->fields($values);
+    $query->execute();
+  }
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_ACTION().
+ */
+function paymentmethodbasic_payment_method_update(PaymentMethod $payment_method) {
+  if ($payment_method->controller->name == 'PaymentMethodBasicController') {
+    $query = db_update('paymentmethodbasic');
+    $values = array_merge($payment_method->controller_data, array(
+      'pmid' => $payment_method->pmid,
+    ));
+    $query->fields($values);
+    $query->condition('pmid', $payment_method->pmid);
+    $query->execute();
+  }
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_ACTION().
+ */
+function paymentmethodbasic_payment_method_delete($entity) {
+  if ($entity->controller->name == 'PaymentMethodBasicController') {
+    db_delete('paymentmethodbasic')
+      ->condition('pmid', $entity->pmid)
+      ->execute();
+  }
+}
+
+/**
+ * A basic payment method controller.
+ *
+ * This controller always executes payments successfully, does not require
+ * payment-specific information and does not transfer any money. It can be
+ * useful to create a "collect on delivery" payment method, for instance.
+ */
+class PaymentMethodBasicController extends PaymentMethodController {
+
+  public $controller_data_defaults = array(
+    'message' => '',
+    'status' => PAYMENT_STATUS_SUCCESS,
+    'text_format' => '',
+  );
+
+  public $payment_method_configuration_form_elements_callback = 'paymentmethodbasic_payment_method_configuration_form_elements';
+
+  public $payment_configuration_form_elements_callback = 'paymentmethodbasic_payment_configuration_form_elements';
+
+  function __construct() {
+    $this->title = t('Basic');
+    $this->description = t("A 'dumb' payment method type that always successfully executes payments, but never actually transfers money. It can be useful for <em>collect on delivery</em>, for instance.");
+  }
+
+  /**
+   * Implements PaymentMethodController::execute().
+   */
+  function execute(Payment $payment) {
+    $payment->setStatus(new PaymentStatusItem($payment->method->controller_data['status']));
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function validate(Payment $payment, PaymentMethod $payment_method, $strict) {
+    // This payment method controller does not have a minimum amount, so when
+    // the parent throws such an exception, catch it and do nothing.
+    try {
+      parent::validate($payment, $payment_method, $strict);
+    }
+    catch (PaymentValidationAmountBelowMinimumException $e) {
+    }
+  }
+}
+
+/**
+ * Form build callback: implements
+ * PaymentMethodController::payment_method_configuration_form_elements_callback.
+ *
+ * @return array
+ *   A Drupal form.
+ */
+function paymentmethodbasic_payment_method_configuration_form_elements(array $form, array &$form_state) {
+  $controller_data = $form_state['payment_method']->controller_data;
+
+  $elements['status'] = array(
+    '#type' => 'select',
+    '#title' => t('Final payment status'),
+    '#description' => t('The status to give a payment after being processed by this payment method.'),
+    '#default_value' => isset($controller_data['status']) ? $controller_data['status'] : PAYMENT_STATUS_SUCCESS,
+    '#options' => payment_status_options(),
+  );
+  $elements['message'] = array(
+    '#type' => 'text_format',
+    '#title' => t('Payment form message'),
+    '#default_value' => isset($controller_data['message']) ? $controller_data['message'] : '',
+    '#format' => isset($controller_data['text_format']) ? $controller_data['text_format'] : filter_default_format(),
+  );
+
+  return $elements;
+}
+
+/**
+ * Implements form validate callback for
+ * paymentmethodbasic_payment_method_configuration_form_elements().
+ */
+function paymentmethodbasic_payment_method_configuration_form_elements_validate(array $element, array &$form_state) {
+  $values = drupal_array_get_nested_value($form_state['values'], $element['#parents']);
+  $form_state['payment_method']->controller_data['message'] = $values['message']['value'];
+  $form_state['payment_method']->controller_data['status'] = $values['status'];
+  $form_state['payment_method']->controller_data['text_format'] = $values['message']['format'];
+}
+
+/**
+ * Implements
+ * PaymentMethodController::payment_configuration_form_elements_callback.
+ */
+function paymentmethodbasic_payment_configuration_form_elements(array $element, array &$form_state) {
+  $payment = $form_state['payment'];
+
+  $elements = array();
+  $elements['message'] = array(
+    '#type' => 'markup',
+    '#markup' => check_markup($payment->method->controller_data['message'], $payment->method->controller_data['text_format']),
+  );
+
+  return $elements;
+}

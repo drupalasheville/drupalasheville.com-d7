@@ -1,0 +1,16 @@
+name = Payment Form Field tests
+description = "Supports Payment Form's automated tests."
+core = 7.x
+dependencies[] = paymentform
+package = Payment
+hidden = TRUE
+files[] = tests/PaymentformTestFieldWebTestCase.test
+files[] = tests/PaymentformTestFieldFormatterWebTestCase.test
+files[] = tests/PaymentformTestLineItemFieldWidgetWebTestCase.test
+
+; Information added by Drupal.org packaging script on 2014-07-02
+version = "7.x-1.10+1-dev"
+core = "7.x"
+project = "payment"
+datestamp = "1404314928"
+

@@ -1,0 +1,84 @@
+<?php
+
+/**
+ * @file
+ * Installation and uninstallation functions.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function paymentmethodbasic_schema() {
+  $schema['paymentmethodbasic'] = array(
+    'fields' => array(
+      'message' => array(
+        'type' => 'text',
+        'size' => 'big',
+      ),
+      'pmid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'text_format' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('pmid'),
+    'unique keys' => array(
+      'pmid' => array('pmid'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function paymentmethodbasic_install() {
+  foreach (paymentmethodbasic_payment_method_defaults() as $payment_method) {
+    entity_save('payment_method', $payment_method);
+  }
+}
+
+/**
+ * Returns default payment methods.
+ *
+ * @return array
+ *   An array of PaymentMethod objects.
+ */
+function paymentmethodbasic_payment_method_defaults() {
+  $payment_methods[] = new PaymentMethod(array(
+    'controller' => payment_method_controller_load('PaymentMethodBasicController'),
+    'controller_data' => array(
+      'message' => 'You will be charged upon delivery. Please make sure you have enough cash available.',
+      'status' => PAYMENT_STATUS_PENDING,
+      'text_format' => 'plain_text',
+    ),
+    'name' => 'collect_on_delivery',
+    'title_generic' => t('Collect on delivery'),
+    'title_specific' => t('Collect on delivery'),
+  ));
+  $payment_methods[] = new PaymentMethod(array(
+    'controller' => payment_method_controller_load('PaymentMethodBasicController'),
+    'controller_data' => array(
+      'message' => '',
+      'status' => PAYMENT_STATUS_SUCCESS,
+      'text_format' => 'plain_text',
+    ),
+    'name' => 'no_payment_required',
+    'title_generic' => t('No payment required'),
+    'title_specific' => t('No payment required'),
+  ));
+
+  return $payment_methods;
+}

@@ -1,0 +1,138 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestEntityCrudWebTestCase.
+ */
+
+/**
+ * Tests entity CRUD functionality.
+ */
+class PaymentTestEntityCrudWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Entity CRUD functionality',
+      'group' => 'Payment',
+    );
+  }
+
+  function setUp(array $modules = array()) {
+    parent::setUp($modules = array('payment_test'));
+  }
+
+  /**
+   * Test payment method CRUD functionality.
+   */
+  function testPaymentMethodCRUD() {
+    $schema = drupal_get_schema('payment_method');
+
+    // Test inserting a payment method.
+    $payment_method = new PaymentMethod(array(
+      'controller' => payment_method_controller_load('PaymentMethodControllerUnavailable'),
+      'name' => 'foo',
+      'title_generic' => 'bar',
+      'title_specific' => 'baz',
+    ));
+    entity_save('payment_method', $payment_method);
+    $query = db_select('payment_method');
+    foreach (array_keys($schema['fields']) as $field) {
+      if (property_exists($payment_method, $field)) {
+        $query->condition($field, $payment_method->$field);
+      }
+    }
+    $count = $query->countQuery()->execute()->fetchField();
+    $this->assertTrue($count, 'A new payment method is correctly inserted.');
+
+    // Test loading a payment method.
+    $payment_method_loaded = entity_load_single('payment_method', $payment_method->pmid);
+    $this->assertTrue($payment_method_loaded instanceof PaymentMethod);
+
+    // Test updating a payment method.
+    $payment_method->controller = payment_method_controller_load('PaymentMethodControllerUnavailable');
+    $payment_method->name = 'bar';
+    $payment_method->title_generic = 'baz';
+    $payment_method->title_specific = 'foo';
+    entity_save('payment_method', $payment_method);
+    $query = db_select('payment_method');
+    foreach (array_keys($schema['fields']) as $field) {
+      if (property_exists($payment_method, $field)) {
+        $query->condition($field, $payment_method->$field);
+      }
+    }
+    $count = $query->countQuery()->execute()->fetchField();
+    $this->assertTrue($count, 'A payment method is correctly updated.');
+
+    // Test deleting a payment method.
+    entity_delete('payment_method', $payment_method->pmid);
+    $count = db_select('payment_method')
+      ->condition('pmid', $payment_method->pmid)
+      ->countQuery()
+      ->execute()
+      ->fetchField();
+    $this->assertFalse($count, 'A payment method is correctly deleted.');
+  }
+
+  /**
+   * Test payment CRUD functionality.
+   */
+  function testPaymentCRUD() {
+    $schema = drupal_get_schema('payment');
+    $payment_method = $this->paymentMethodCreate(1, payment_method_controller_load('PaymentMethodControllerUnavailable'));
+    entity_save('payment_method', $payment_method);
+
+    // Test inserting a payment.
+    $payment = new Payment(array(
+      'currency_code' => 'foo',
+      'description' => 'bar',
+      'finish_callback' => 'payment_test_finish_callback',
+      'method' => $payment_method,
+    ));
+    entity_save('payment', $payment);
+    $query = db_select('payment');
+    foreach ($schema['fields'] as $name => $definition) {
+      if (property_exists($payment, $name)) {
+        if (!empty($definition['serialize'])) {
+          $query->condition($name, serialize($payment->$name));
+        }
+        else {
+          $query->condition($name, $payment->$name);
+        }
+      }
+    }
+    $count = $query->countQuery()->execute()->fetchField();
+    $this->assertTrue($count, 'A new payment is correctly inserted.');
+
+    // Test loading a payment.
+    $payment_loaded = entity_load_single('payment', $payment->pid);
+    $this->assertTrue($payment_loaded instanceof Payment);
+
+    // Test updating a payment.
+    $payment->currency_code = 'bar';
+    $payment->description = 'foo';
+    entity_save('payment', $payment);
+    $query = db_select('payment');
+    foreach ($schema['fields'] as $name => $definition) {
+      if (property_exists($payment, $name)) {
+        if (!empty($definition['serialize'])) {
+          $query->condition($name, serialize($payment->$name));
+        }
+        else {
+          $query->condition($name, $payment->$name);
+        }
+      }
+    }
+    $count = $query->countQuery()->execute()->fetchField();
+    $this->assertTrue($count, 'A payment is correctly updated.');
+
+    // Test deleting a payment.
+    entity_delete('payment', $payment->pid);
+    $count = db_select('payment')
+      ->condition('pid', $payment->pid)
+      ->countQuery()
+      ->execute()
+      ->fetchField();
+    $this->assertFalse($count, 'A payment is correctly deleted.');
+  }
+}

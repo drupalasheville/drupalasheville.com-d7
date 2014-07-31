@@ -1,0 +1,1143 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations and shared functions.
+ */
+
+// Load include files that contain hooks or callback code.
+module_load_include('inc', 'payment', 'payment.ui');
+
+/**
+ * An absolute parent status: a payment for which all money has been transferred.
+ */
+define('PAYMENT_STATUS_MONEY_TRANSFERRED', 'payment_status_money_transferred');
+
+/**
+ * An absolute parent status: a payment for which no money has been transferred.
+ */
+define('PAYMENT_STATUS_MONEY_NOT_TRANSFERRED', 'payment_status_money_not_transferred');
+
+/**
+ * An absolute parent status: a payment whose status is unknown to us.
+ */
+define('PAYMENT_STATUS_UNKNOWN', 'payment_status_unknown');
+
+/**
+ * A new payment for which processing has not yet started.
+ */
+define('PAYMENT_STATUS_NEW', 'payment_status_new');
+
+/**
+ * An open (pending) payment.
+ */
+define('PAYMENT_STATUS_PENDING', 'payment_status_pending');
+
+/**
+ * A payment for which funds have been successfully transferred.
+ */
+define('PAYMENT_STATUS_SUCCESS', 'payment_status_success');
+
+/**
+ * A failed payment, e.g. for which no funds have been transferred.
+ */
+define('PAYMENT_STATUS_FAILED', 'payment_status_failed');
+
+/**
+ * A payment that was cancelled by the payer.
+ */
+define('PAYMENT_STATUS_CANCELLED', 'payment_status_cancelled');
+
+/**
+ * A payment that expired due to inactivity.
+ */
+define('PAYMENT_STATUS_EXPIRED', 'payment_status_expired');
+
+/**
+ * A payment for which payer authorization failed.
+ */
+define('PAYMENT_STATUS_AUTHORIZATION_FAILED', 'payment_status_authorization_failed');
+
+/**
+ * The prefix for payment line item tokens.
+ */
+define('PAYMENT_LINE_ITEM_TOKEN_PREFIX', 'line_item-');
+
+/**
+ * The absolute minimum payment amount.
+ */
+define('PAYMENT_MINIMUM_AMOUNT', 0);
+
+/**
+ * Implements hook_init().
+ */
+function payment_init() {
+  // Add administration CSS.
+  if (preg_match('#^admin/config/services/payment/method#', $_GET['q'])
+    || preg_match('#^admin/content/payment#', $_GET['q'])
+    || preg_match('#^user/\d+?/payment#', $_GET['q'])) {
+    drupal_add_css(drupal_get_path('module', 'payment') . '/css/payment.css');
+  }
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function payment_module_implements_alter(array &$implementations, $hook) {
+  if ($hook == 'payment_method_load') {
+    // Commerce Payment has a function called commerce_payment_method_load(),
+    // which looks like Commerce's implementation of
+    // hook_payment_method_load(), but in fact is a Commerce Payment CRUD
+    // function.
+    unset($implementations['commerce']);
+  }
+}
+
+/**
+ * Implements hook_menu().
+ *
+ * @see payment_views_default_views()
+ */
+function payment_menu() {
+  // Payment pages.
+  $items['payment/%entity_object'] = array(
+    'load arguments' => array('payment'),
+    'title' => 'Payment',
+    'title callback' => 'payment_title',
+    'title arguments' => array(1),
+    'page callback' => 'payment_page_payment_view',
+    'page arguments' => array(1),
+    'access callback' => 'payment_access',
+    'access arguments' => array('view', 1),
+    'file' => 'payment.ui.inc',
+  );
+  $items['payment/%entity_object/view'] = array(
+    'load arguments' => array('payment'),
+    'title' => 'View',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+    'weight' => -10,
+  );
+  $items['payment/%entity_object/edit'] = array(
+    'load arguments' => array('payment'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('payment_form_standalone', 1),
+    'access callback' => 'payment_access',
+    'access arguments' => array('update', 1),
+    'title' => 'Edit',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+    'weight' => -9,
+    'file' => 'payment.ui.inc',
+  );
+  $items['payment/%entity_object/delete'] = array(
+    'load arguments' => array('payment'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('payment_form_payment_delete', 1),
+    'access callback' => 'payment_access',
+    'access arguments' => array('delete', 1),
+    'title' => 'Delete',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => -8,
+    'file' => 'payment.ui.inc',
+  );
+
+  // Administration section.
+  $items['admin/config/services/payment'] = array(
+    'title' => 'Payment',
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('access administration pages'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+
+  // Global configuration.
+  $items['admin/config/services/payment/global'] = array(
+    'title' => 'Global configuration',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('payment_form_global_configuration'),
+    'access arguments' => array('payment.global.administer'),
+    'file' => 'payment.ui.inc',
+  );
+
+  // Payment method administration.
+  $items['admin/config/services/payment/method/add'] = array(
+    'title' => 'Add payment method',
+    'page callback' => 'payment_page_payment_method_add_select_controller',
+    'access callback' => 'payment_page_payment_method_add_select_controller_access',
+    'file' => 'payment.ui.inc',
+    'type' => MENU_NORMAL_ITEM | MENU_LOCAL_ACTION,
+    'weight' => 1,
+  );
+  $items['admin/config/services/payment/method/add/%payment_method_controller'] = array(
+    'title' => 'Add payment method',
+    'title callback' => 'payment_method_form_add_title',
+    'title arguments' => array(6),
+    'page callback' => 'payment_method_form_add',
+    'page arguments' => array(6),
+    'access callback' => 'payment_method_form_add_access',
+    'access arguments' => array(6),
+    'file' => 'payment.ui.inc',
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/config/services/payment/method/%entity_object'] = array(
+    'load arguments' => array('payment_method'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('payment_form_payment_method', 5),
+    'access callback' => 'payment_method_access',
+    'access arguments' => array('update', 5),
+    'title' => 'Payment method',
+    'title callback' => 'payment_method_title',
+    'title arguments' => array(5),
+    'file' => 'payment.ui.inc',
+  );
+  $items['admin/config/services/payment/method/%entity_object/edit'] = array(
+    'load arguments' => array('payment_method'),
+    'title' => 'Edit',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+  );
+  $items['admin/config/services/payment/method/%entity_object/enable'] = array(
+    'load arguments' => array('payment_method'),
+    'page callback' => 'payment_page_method_enable_disable',
+    'page arguments' => array('enable', 5),
+    'access callback' => 'payment_method_access_token',
+    'access arguments' => array(7, 'enable', 5),
+    'title' => 'Enable',
+    'file' => 'payment.ui.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 1,
+  );
+  $items['admin/config/services/payment/method/%entity_object/disable'] = array(
+    'load arguments' => array('payment_method'),
+    'page callback' => 'payment_page_method_enable_disable',
+    'page arguments' => array('disable', 5),
+    'access callback' => 'payment_method_access_token',
+    'access arguments' => array(7, 'disable', 5),
+    'title' => 'Disable',
+    'file' => 'payment.ui.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 1,
+  );
+  $items['admin/config/services/payment/method/%entity_object/clone'] = array(
+    'load arguments' => array('payment_method'),
+    'page callback' => 'payment_page_method_clone',
+    'page arguments' => array(5),
+    'access callback' => 'payment_method_access',
+    'access arguments' => array('clone', 5),
+    'title' => 'Clone',
+    'file' => 'payment.ui.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 2,
+  );
+  $items['admin/config/services/payment/method/%entity_object/delete'] = array(
+    'load arguments' => array('payment_method'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('payment_form_payment_method_delete', 5),
+    'access callback' => 'payment_method_access',
+    'access arguments' => array('delete', 5),
+    'title' => 'Delete',
+    'file' => 'payment.ui.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 3,
+  );
+
+  // Payment status overview.
+  $items['admin/config/services/payment/status'] = array(
+    'title' => 'Payment statuses',
+    'page callback' => 'payment_page_status',
+    'access arguments' => array('payment.payment_status.view'),
+    'file' => 'payment.ui.inc',
+    'weight' => 1,
+  );
+
+  // Placeholder pages in case certain dependencies have not been met.
+  $base = array(
+    'page callback' => 'payment_page_required_modules',
+    'page arguments' => array(array(
+      'views' => 'Views',
+    )),
+    'file' => 'payment.ui.inc',
+    'menu_name' => 'management',
+  );
+  if (!module_exists('views')) {
+    $items['admin/content/payment'] = array(
+      'title' => 'Payments',
+      'access callback' => 'payment_access',
+      'access arguments' => array('view'),
+    ) + $base;
+    $items['admin/config/services/payment/method'] = array(
+      'title' => 'Payment methods',
+      'access callback' => 'payment_method_access',
+      'access arguments' => array('view'),
+    ) + $base;
+    $items['user/%user/payment'] = array(
+      'title' => 'Payments',
+      'access arguments' => array('payment.payment.view.own'),
+    ) + $base;
+  }
+
+  return $items;
+}
+
+/**
+ * Implement hook_menu_alter().
+ */
+function payment_menu_alter(&$items) {
+  // Make "Manage fields" the default local task.
+  if (isset($items['admin/config/services/payment/payment/fields'])) {
+    $items['admin/config/services/payment/payment'] = array(
+      'title' => 'Payments',
+      'type' => MENU_NORMAL_ITEM,
+    ) + $items['admin/config/services/payment/payment/fields'];
+    $items['admin/config/services/payment/payment/fields'] = array(
+      'title' => 'Manage fields',
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+    );
+  }
+}
+
+/**
+ * Implements hook_permission().
+ *
+ * @see payment_method_access()
+ */
+function payment_permission() {
+  $permissions = array(
+    'payment.global.administer' => array(
+      'title' => t('Administer global Payment configuration'),
+    ),
+    'payment.rules.administer' => array(
+      'title' => t('Administer rule configurations'),
+      'restrict access' => TRUE,
+    ),
+    'payment.payment.administer' => array(
+      'title' => t('Administer payment configuration'),
+    ),
+    'payment.payment.view.any' => array(
+      'title' => t('View any payment'),
+    ),
+    'payment.payment.view.own' => array(
+      'title' => t('View own payments'),
+    ),
+    'payment.payment.update.any' => array(
+      'title' => t('Update any payment'),
+    ),
+    'payment.payment.update.own' => array(
+      'title' => t('Update own payments'),
+    ),
+    'payment.payment.delete.any' => array(
+      'title' => t('Delete any payment'),
+    ),
+    'payment.payment.delete.own' => array(
+      'title' => t('Delete own payments'),
+    ),
+    'payment.payment_method.update.any' => array(
+      'title' => t('Update any payment method'),
+      'restrict access' => TRUE,
+    ),
+    'payment.payment_method.update.own' => array(
+      'title' => t('Update own payment methods'),
+    ),
+    'payment.payment_method.delete.any' => array(
+      'title' => t('Delete any payment method'),
+    ),
+    'payment.payment_method.delete.own' => array(
+      'title' => t('Delete own payment methods'),
+    ),
+    'payment.payment_method.view.any' => array(
+      'title' => t('View any payment method'),
+      'restrict access' => TRUE,
+    ),
+    'payment.payment_method.view.own' => array(
+      'title' => t('View own payment methods'),
+    ),
+    'payment.payment_status.view' => array(
+      'title' => t('View payment status overview'),
+    ),
+  );
+  $controllers = payment_method_controller_load_multiple();
+  unset($controllers['PaymentMethodControllerUnavailable']);
+  foreach ($controllers as $controller) {
+    $permissions['payment.payment_method.create.' . $controller->name] = array(
+      'title' => t('Create %controller_title payment methods', array(
+        '%controller_title' => $controller->title,
+      )),
+    );
+  }
+
+  return $permissions;
+}
+
+/**
+ * Implements hook_hook_info().
+ */
+function payment_hook_info() {
+  $hooks['payment_status_info'] = array(
+    'group' => 'payment',
+  );
+  $hooks['payment_method_controller_info'] = array(
+    'group' => 'payment',
+  );
+  $hooks['payment_line_item_info'] = array(
+    'group' => 'payment',
+  );
+  $hooks['payment_status_change'] = array(
+    'group' => 'payment',
+  );
+  $hooks['payment_pre_execute'] = array(
+    'group' => 'payment',
+  );
+  $hooks['payment_pre_finish'] = array(
+    'group' => 'payment',
+  );
+  $hooks['payment_validate'] = array(
+    'group' => 'payment',
+  );
+
+  return $hooks;
+}
+
+/**
+ * Implements hook_field_extra_fields().
+ */
+function payment_field_extra_fields() {
+  $field['payment']['payment'] = array(
+    'form' => array(
+      'payment_line_items' => array(
+        'label' => t('Line items'),
+        'weight' => 0,
+      ),
+      'payment_method' => array(
+        'label' => t('Payment method selection and configuration'),
+        'weight' => 0,
+      ),
+      'payment_status' => array(
+        'label' => t('Status'),
+        'weight' => 0,
+      ),
+    ),
+    'display' => array(
+      'payment_line_items' => array(
+        'label' => t('Line items'),
+        'weight' => 0,
+      ),
+      'payment_method' => array(
+        'label' => t('Payment method (generic title)'),
+        'weight' => 0,
+      ),
+      'payment_status_items' => array(
+        'label' => t('Status items'),
+        'weight' => 0,
+      ),
+    ),
+  );
+
+  return $field;
+}
+
+/**
+ * Implements hook_entity_info().
+ */
+function payment_entity_info() {
+  $entity_info['payment'] = array(
+    'label' => t('Payment'),
+    'controller class' => 'PaymentEntityController',
+    'entity class' => 'Payment',
+    'module' => 'payment',
+    'base table' => 'payment',
+    'entity keys' => array(
+      'id' => 'pid',
+    ),
+    'label callback' => 'payment_label',
+    'uri callback' => 'payment_uri',
+    'fieldable' => TRUE,
+    'bundles' => array(
+      'payment' => array(
+        'label' => t('Payment'),
+        'admin' => array(
+          'path' => 'admin/config/services/payment/payment',
+          'access arguments' => array('payment.payment.administer'),
+        ),
+      ),
+    ),
+    'access callback' => 'payment_access',
+  );
+  $entity_info['payment_method'] = array(
+    'label' => t('Payment method'),
+    'controller class' => 'PaymentMethodEntityController',
+    'features controller class' => 'PaymentMethodFeaturesController',
+    'entity class' => 'PaymentMethod',
+    'module' => 'payment',
+    'base table' => 'payment_method',
+    'entity keys' => array(
+      'id' => 'pmid',
+      'label' => 'title_specific',
+      'name' => 'name',
+    ),
+    'uri callback' => 'payment_method_uri',
+    'exportable' => TRUE,
+    'access callback' => 'payment_method_access',
+  );
+
+  return $entity_info;
+}
+
+/**
+ * Returns the label of a given Payment entity.
+ *
+ * @param Payment $entity
+ *   A Payment entity.
+ *
+ * @return string
+ *   The label of the Payment entity.
+ */
+function payment_label(Payment $entity) {
+  return t($entity->description, $entity->description_arguments);
+}
+
+/**
+ * Implements hook_entity_property_info().
+ */
+function payment_entity_property_info() {
+  // Payment.
+  $properties['payment']['properties']['context'] = array(
+    'description' => t("The machine-readable name of the context that created the payment."),
+    'label' => t('Context'),
+    'required' => TRUE,
+    'schema field' => 'context',
+  );
+  $properties['payment']['properties']['currency_code'] = array(
+    'description' => t('A three-letter ISO 4217 currency code.'),
+    'label' => t('Currency code'),
+    'required' => TRUE,
+    'schema field' => 'currency_code',
+  );
+  $properties['payment']['properties']['description'] = array(
+    'label' => t('Description'),
+    'schema field' => 'description',
+    'getter callback' => 'payment_entity_property_get',
+  );
+  $properties['payment']['properties']['finish_callback'] = array(
+    'description' => t('The name of the function to call once payment processing is completed.'),
+    'label' => t('Finish callback'),
+    'required' => TRUE,
+    'schema field' => 'finish_callback',
+  );
+  $properties['payment']['properties']['method'] = array(
+    'label' => t('Payment method'),
+    'required' => TRUE,
+    'type' => 'payment_method',
+  );
+  $properties['payment']['properties']['pid'] = array(
+    'label' => t('Payment ID'),
+    'schema field' => 'pid',
+    'type' => 'integer',
+  );
+  $properties['payment']['properties']['pmid'] = array(
+    'label' => t('Payment method ID'),
+    'schema field' => 'pmid',
+    'type' => 'integer',
+  );
+  $properties['payment']['properties']['uid'] = array(
+    'label' => t('User ID'),
+    'description' => t('The ID of the user this payment belongs to.'),
+    'required' => TRUE,
+    'schema field' => 'uid',
+    'type' => 'integer',
+  );
+
+  // Payment method.
+  $properties['payment_method']['properties']['controller_class_name'] = array(
+    'label' => t('Payment method type'),
+    'schema field' => 'controller_class_name',
+  );
+  $properties['payment_method']['properties']['enabled'] = array(
+    'description' => t('Whether the payment method is enabled and can be used.'),
+    'label' => t('Enabled'),
+    'schema field' => 'enabled',
+    'type' => 'boolean',
+  );
+  $properties['payment_method']['properties']['pmid'] = array(
+    'label' => t('Payment method ID'),
+    'schema field' => 'pmid',
+    'type' => 'integer',
+  );
+  $properties['payment_method']['properties']['title_specific'] = array(
+    'label' => t('Title (specific)'),
+    'required' => TRUE,
+    'schema field' => 'title_specific',
+  );
+  $properties['payment_method']['properties']['title_generic'] = array(
+    'label' => t('Title (generic)'),
+    'schema field' => 'title_generic',
+  );
+  $properties['payment_method']['properties']['uid'] = array(
+    'label' => t('User ID'),
+    'description' => t('The ID of the user this payment method belongs to.'),
+    'required' => TRUE,
+    'schema field' => 'uid',
+    'type' => 'integer',
+  );
+
+  return $properties;
+}
+
+/**
+ * Gets the property of a Payment entity.
+ *
+ * @see payment_entity_property_info()
+ */
+function payment_entity_property_get(Payment $payment, array $options, $name, $type, $info) {
+  switch ($name) {
+    case 'description':
+      return payment_label($payment);
+
+    default:
+      return entity_property_verbatim_get($payment, $options, $name, $type, $info);
+  }
+}
+
+/**
+ * Implements hook_element_info().
+ */
+function payment_element_info() {
+  // A payment method selection and configuration element. Every form this
+  // element is used in should have a Payment object in $form_state['payment'].
+  $elements['payment_method'] = array(
+    '#input' => TRUE,
+    '#process' => array('payment_form_process_method'),
+    '#element_validate' => array('payment_form_process_method_validate'),
+    // An array with IDs of the allowed payment methods. Leave empty to allow
+    // all. If just a single value is given, or if only ony payment method is
+    // valid, the element will not expand to a select list, but will appear to
+    // the user as if there only is one payment method available at all.
+    '#pmids' => array(),
+  );
+  // An element to collect a payment amount and convert it to a float.
+  $elements['payment_amount'] = array(
+    '#input' => TRUE,
+    '#process' => array('payment_form_process_amount'),
+    '#element_validate' => array('payment_form_process_amount_validate'),
+    // The minimum payment amount as a float that needs to be entered. Use
+    // FALSE to omit.
+    '#minimum_amount' => FALSE,
+    // The ISO 4217 currency code.
+    '#currency_code' => 'XXX',
+  );
+  // Line item configuration. The element's #default_value is an array with
+  // PaymentLineItem objects.
+  $elements['payment_line_item'] = array(
+    '#input' => TRUE,
+    '#tree' => TRUE,
+    '#process' => array('payment_form_process_line_item'),
+    '#attached' => array(
+      'css' => array(drupal_get_path('module', 'payment') . '/css/payment.css'),
+      ),
+    '#element_validate' => array('payment_form_process_line_item_validate'),
+    // The ISO 4217 currency code.
+    '#currency_code' => 'XXX',
+    // The number of values this element allows. Enter 0 for unlimited.
+    '#cardinality' => 0,
+  );
+  // Placeholder element for a payment method controller's payment or payment
+  // method form elements callback. Using this element ensures the callbacks
+  // receive enough contextual information.
+  $elements['payment_form_context'] = array(
+    '#tree' => TRUE,
+    '#process' => array('payment_form_process_context'),
+    // The class name of the payment method controller whose callbacks to call.
+    '#payment_method_controller_name' => '',
+    // Either "payment" or "payment_method".
+    '#callback_type' => '',
+  );
+
+  return $elements;
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function payment_views_api() {
+  return array(
+    'api' => '2',
+    'path' => drupal_get_path('module', 'payment') . '/views',
+  );
+}
+
+/**
+ * Gets payment statuses.
+ *
+ * @see hook_payment_status_info()
+ *
+ * @return array
+ *   An array with PaymentStatusInfo objects for all available statuses.
+ */
+function payment_statuses_info() {
+  $statuses_info = &drupal_static(__FUNCTION__);
+
+  if (!$statuses_info) {
+    $statuses_info = array();
+    foreach (module_invoke_all('payment_status_info') as $status_info) {
+      $statuses_info[$status_info->status] = $status_info;
+    }
+    drupal_alter('payment_status_info', $statuses_info);
+  }
+
+  return $statuses_info;
+}
+
+/**
+ * Gets a specific payment status.
+ *
+ * @param string $status
+ *   A status' system name.
+ * @param boolean $unknown
+ *   Whether to return info for PAYMENT_STATUS_UNKNOWN if the requested status
+ *   does not exist.
+ *
+ * @return mixed
+ *   A PaymentStatusInfo object or FALSE if the status does not exist.
+ */
+function payment_status_info($status, $unknown = FALSE) {
+  $statuses_info = payment_statuses_info();
+
+  return isset($statuses_info[$status]) ? $statuses_info[$status] : ($unknown ? $statuses_info[PAYMENT_STATUS_UNKNOWN] : FALSE);
+}
+
+/**
+ * Returns information about all line item types.
+ *
+ * @see hook_payment_line_item_type_info()
+ *
+ * @return array
+ *   An array with PaymentLineItemInfo objects, keyed by PaymentLineItemInfo::name.
+ */
+function payment_line_items_info() {
+  $line_items_info = &drupal_static(__FUNCTION__);
+
+  if (is_null($line_items_info)) {
+    $line_items_info = array();
+    foreach (module_invoke_all('payment_line_item_info') as $line_item_info) {
+      $line_items_info[$line_item_info->name] = $line_item_info;
+    }
+    drupal_alter('payment_line_item_info', $line_items_info);
+  }
+
+  return $line_items_info;
+}
+
+/**
+ * Returns information about a specific line item type.
+ *
+ * @param string $name
+ *   The line item type's machine name.
+ *
+ * @return mixed
+ *   A PaymentLineItemInfo object or FALSE if the requested info could not be
+ *   found.
+ */
+function payment_line_item_info($name) {
+  $line_items_info = payment_line_items_info();
+
+  return isset($line_items_info[$name]) ? $line_items_info[$name] : FALSE;
+}
+
+/**
+ * Check if a payment status has a given other status as one of its ancestors.
+ *
+ * @param string $status
+ *   The payment status.
+ * @param string $ancestor_status
+ *   The ancestor status to check for.
+ *
+ * @return boolean
+ */
+function payment_status_has_ancestor($status, $ancestor_status) {
+  return in_array($ancestor_status, payment_status_info($status, TRUE)->ancestors());
+}
+
+/**
+ * Check if a payment status is equal to a given other status or has it one of
+ * its ancestors.
+ *
+ * @param string $status
+ *   The payment status.
+ * @param string $ancestor_status
+ *   The ancestor status to check for.
+ *
+ * @return boolean
+ */
+function payment_status_is_or_has_ancestor($status, $ancestor_status) {
+  return $status == $ancestor_status || in_array($ancestor_status, payment_status_info($status, TRUE)->ancestors());
+}
+
+/**
+ * Returns information about payment method controllers.
+ *
+ * @return array
+ *   Keys are payment method controller class aliases, values are the real
+ *   payment method controller class names. This allows
+ *   hook_payment_method_controller_info_alter() to override payment method
+ *   controllers.
+ */
+function payment_method_controllers_info() {
+  $controllers_info = &drupal_static(__FUNCTION__);
+
+  if (!$controllers_info) {
+    $controllers_info = module_invoke_all('payment_method_controller_info');
+    foreach ($controllers_info as $controller_class_name_alias => $controller_class_name) {
+      if (is_numeric($controller_class_name_alias)) {
+        unset($controllers_info[$controller_class_name_alias]);
+        $controllers_info[$controller_class_name] = $controller_class_name;
+      }
+    }
+    drupal_alter('payment_method_controller_info', $controllers_info);
+  }
+
+  return $controllers_info;
+}
+
+/**
+ * Load a payment method controller().
+ *
+ * @param string $controller_class_name
+ *   The name of the controller class to load.
+ *
+ * @return mixed
+ *   Either a PaymentMethodController object or FALSE in case of errors.
+ */
+function payment_method_controller_load($controller_class_name) {
+  $controllers = payment_method_controller_load_multiple(array($controller_class_name));
+
+  return reset($controllers);
+}
+
+/**
+ * Load multiple payment method controllers.
+ *
+ * @param array $controller_class_names
+ *   An array with names of controller classes. Leave empty to load all
+ *   controllers.
+ *
+ * @return array
+ *   Keys are the values of $controller_class_names passed on to this function.
+ *   Every value is either a PaymentMethodController object or FALSE if the
+ *   controller could not be loaded.
+ */
+function payment_method_controller_load_multiple(array $controller_class_names = array()) {
+  $controllers = NULL;
+
+  // Load all existing controllers.
+  if (is_null($controllers)) {
+    foreach (payment_method_controllers_info() as $controller_class_name_alias => $controller_class_name) {
+      $controller = new $controller_class_name();
+      $controller->name = $controller_class_name_alias;
+      $controllers[$controller_class_name_alias] = $controller;
+    }
+  }
+
+  // Set FALSE for requested controllers that do not exist.
+  $controllers += array_fill_keys(array_diff($controller_class_names, array_keys($controllers)), FALSE);
+
+  return $controller_class_names ? array_intersect_key($controllers, array_flip($controller_class_names)) : array_filter($controllers);
+}
+
+/**
+ * Convert an amount as a float to a human-readable format.
+ *
+ * @param float $amount
+ * @param string $currency_code
+ *
+ * @return string
+ */
+function payment_amount_human_readable($amount, $currency_code = NULL) {
+  if (payment_currency_version() === 2) {
+    $currency = currency_load($currency_code);
+    if ($currency) {
+      return $currency->format($amount);
+    }
+  }
+  $amount_string = number_format($amount, 2, '.', '');
+  $decimal_separator_position = strpos($amount_string, '.');
+  $arguments = array(
+    '!currency_code' => $currency_code,
+    '!units' => substr($amount_string, 0, $decimal_separator_position),
+    '!cents' => substr($amount_string, $decimal_separator_position + 1),
+  );
+  return $currency_code ? t('!currency_code !units.!cents', $arguments) : t('!units.!cents', $arguments);
+}
+
+/**
+ * Check if a user has access to perform a certain payment operation.
+ *
+ * @see payment_permission()
+ *
+ * @param string $operation
+ *   One of the following operations:
+ *   - "create"
+ *   - "update" (does not require $payment, but only grants access if the user
+ *     has permission to update any payment)
+ *   - "delete" (does not require $payment_method, but only grants access if
+ *     the user has permission to delete any payment)
+ *   - "view" (does not require $payment_method, but only grants access if the
+ *     user has permission to view any payment)
+ * @param Payment $payment
+ *   The payment the user wants to perform the operation on.
+ * @param object $account
+ *   The user account for which to check access. If NULL, the current user is
+ *   used.
+ *
+ * @return boolean
+ */
+function payment_access($operation, Payment $payment = NULL, $account = NULL) {
+  global $user;
+
+  if (!$account) {
+    $account = $user;
+  }
+
+  switch ($operation) {
+    case 'create':
+      // We let other modules decide whether users have access to create
+      // new payments. There is no corresponding permission for this operation.
+      return TRUE;
+    case 'view':
+    case 'update';
+    case 'delete':
+      return user_access('payment.payment.' . $operation . '.any', $account) || $payment && user_access('payment.payment.' . $operation . '.own', $account) && $account->uid == $payment->uid;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements PaymentLineItemInfo::callback.
+ */
+function payment_line_item_get_specific($name, Payment $payment) {
+  return isset($payment->line_items[$name]) ? array($payment->line_items[$name]) : array();
+}
+
+/**
+ * Implements PaymentLineItemInfo::callback.
+ */
+function payment_line_item_get_all($name, Payment $payment) {
+  return $payment->line_items;
+}
+
+/**
+ * Implements PaymentLineItemInfo::callback.
+ */
+function payment_line_item_get_prefixed($name, Payment $payment) {
+  $selection = array();
+
+  foreach ($payment->line_items as $line_item) {
+    if (strpos($line_item->name, $name) === 0) {
+      $selection[] = $line_item;
+    }
+  }
+
+  return $selection;
+}
+
+/**
+ * Implements Rules access callback.
+ */
+function payment_rules_access($type, $name) {
+  return user_access('payment.rules.administer');
+}
+
+/**
+ * Check if a user has access to perform a certain payment method operation.
+ *
+ * @see payment_permission()
+ *
+ * @param string $operation
+ *   One of the following operations:
+ *   - "create" (requires $payment_method)
+ *   - "update" (does not require $payment_method, but only grants access if
+ *     the user has permission to update any payment method)
+ *   - "delete" (does not require $payment_method, but only grants access if
+ *     the user has permission to delete any payment method)
+ *   - "view" (does not require $payment_method, but only grants access if the
+ *     user has permission to view any payment method)
+ *   - "enable" (requires $payment_method)
+ *   - "disable" (requires $payment_method)
+ *   - "clone" (requires $payment_method)
+ * @param PaymentMethod $payment_method
+ *   The payment method the user wants to perform the operation on.
+ * @param object $account
+ *   The user account for which to check access. If NULL, the current user is
+ *   used.
+ *
+ * @return boolean
+ */
+function payment_method_access($operation, PaymentMethod $payment_method = NULL, $account = NULL) {
+  global $user;
+
+  // Default to the currently logged-in user.
+  if (!$account) {
+    $account = $user;
+  }
+
+  switch ($operation) {
+    case 'create':
+      return $payment_method && user_access('payment.payment_method.create.' . $payment_method->controller->name, $account);
+    case 'enable':
+      return $payment_method && $payment_method->enabled == FALSE && payment_method_access('update', $payment_method, $account);
+    case 'disable':
+      return $payment_method && $payment_method->enabled == TRUE && payment_method_access('update', $payment_method, $account);
+    case 'clone':
+      return payment_method_access('create', $payment_method, $account) && payment_method_access('view', $payment_method, $account);
+    case 'view':
+    case 'update':
+    case 'delete':
+      return user_access('payment.payment_method.' . $operation . '.any', $account) || $payment_method && user_access('payment.payment_method.' . $operation . '.own', $account) && $payment_method->uid == $account->uid;
+  }
+  return FALSE;
+}
+
+/**
+ * Check if a user has access to perform a certain payment method operation and
+ * do additional token validation.
+ *
+ * @see payment_method_access
+ *
+ * @param string $token
+ *   A token to validate, that was generated with value "payment_method".
+ * @param string $operation
+ * @param PaymentMethod $payment_method
+ * @param stdClass $account
+ */
+function payment_method_access_token($token, $operation, PaymentMethod $payment_method = NULL, $account = NULL) {
+  return drupal_valid_token($token, 'payment') && payment_method_access($operation, $payment_method, $account);
+}
+
+/**
+ * Log/show a debugging message.
+ *
+ * @param string $message
+ *   The unstranslated US English message to process.
+ * @param string $file
+ *   The path to the file the message originates from.
+ * @param integer $line
+ *   The number of the line within $file the message originates from.
+ *
+ * @return NULL
+ */
+function payment_debug($message, $file = '', $line = 0) {
+  if (variable_get('payment_debug', TRUE)) {
+    // Make sure we have file and line information.
+    if (!$file || !$line) {
+      // Get the backtrace as fast as possible.
+      if (version_compare(phpversion(), '5.3.6') == -1) {
+        $backtrace = debug_backtrace(FALSE);
+      }
+      elseif (version_compare(phpversion(), '5.4.0') > -1) {
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 0);
+      }
+      else {
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+      }
+
+      // Distill the caller's file and line information from the backtrace.
+      $caller = _drupal_get_last_caller($backtrace);
+      if (!$file) {
+        $file = $caller['file'];
+      }
+      if (!$line) {
+        $line = $caller['line'];
+      }
+    }
+
+    // Process the actual message.
+    $link = l(t('Do not log or display Payment debugging messages'), 'admin/config/services/payment/global');
+    $string = 'Debug: %message on line !line in @file (!hide).';
+    $string_arguments = array(
+      '%message' => $message,
+      '!line' => $line,
+      '@file' => $file,
+      '!hide' => $link,
+    );
+    drupal_set_message(t($string, $string_arguments));
+    watchdog('Payment', $string, $string_arguments);
+  }
+}
+
+/**
+ * Checks what version of Currency is installed, if any.
+ *
+ * @return integer|false
+ *   An integer major version, or FALSE if the module is not available.
+ */
+function payment_currency_version() {
+  // Currency.module 7.x-1.x and 7.x-2.x both exist, but currency_load() only
+  // exists in 7.x-2.x.
+  if (module_exists('currency') && function_exists('currency_load')) {
+    return 2;
+  }
+  elseif (module_exists('currency_api')) {
+    return 1;
+  }
+  return FALSE;
+}
+
+/**
+ * Returns an options list of currencies.
+ *
+ * @return array
+ *  Keys are ISO 4217 codes and values are currency titles.
+ */
+function payment_currency_options() {
+  $version = payment_currency_version();
+  if ($version == 2) {
+    return currency_options();
+  }
+  if ($version == 1) {
+    return currency_api_get_list();
+  }
+  return array();
+}
+
+/**
+ * Implements callback_entity_info_uri().
+ */
+function payment_uri(Payment $payment) {
+  return array(
+    'path' => 'payment/' . $payment->pid,
+  );
+}
+
+/**
+ * Implements callback_entity_info_uri().
+ */
+function payment_method_uri(PaymentMethod $payment_method) {
+  return array(
+    'path' => 'admin/config/services/payment/method/' . $payment_method->pmid,
+  );
+}
+
+/**
+ * Implements menu access callback.
+ *
+ * @see PaymentOwnOverviewViewsHandlerAccess::get_access_callback()
+ *
+ * @param stdClass|null $account
+ *   The account for which to check access. Defaults to the currently logged-in
+ *   user.
+ *
+ * @return bool
+ */
+function _payment_own_overview_views_handler_access($account = NULL) {
+  global $user;
+
+  if (!$account) {
+    $account = $user;
+  }
+
+  return user_access('payment.payment.view.any') || user_access('payment.payment.view.own') && $account->uid == arg(1);
+}

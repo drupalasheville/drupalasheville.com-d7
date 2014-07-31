@@ -1,0 +1,44 @@
+<?php
+
+/**
+ * @file
+ * Installation and uninstallation functions.
+ */
+
+/**
+ * Implements hook_field_schema().
+ */
+function paymentform_field_schema($field) {
+  if ($field['type'] == 'paymentform') {
+    $schema = array(
+      'columns' => array(
+        'amount' => array(
+          'type' => 'float',
+          'size' => 'big',
+          'not null' => TRUE,
+        ),
+        'description' => array(
+          'type' => 'varchar',
+          'length' => 255,
+          'default' => '',
+        ),
+        'name' => array(
+          'type' => 'varchar',
+          'length' => '255',
+          'not null' => TRUE,
+        ),
+        'quantity' => array(
+          'type' => 'int',
+          'not null' => TRUE,
+        ),
+        'tax_rate' => array(
+          'type' => 'float',
+          'size' => 'big',
+          'not null' => TRUE,
+        ),
+      ),
+    );
+  }
+
+  return $schema;
+}

@@ -1,0 +1,632 @@
+<?php
+
+/**
+ * @file
+ *   Hook implementations and general functions.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function paymentreference_menu() {
+  $item['paymentreference/finish'] = array(
+    'title' => 'Payment reference finished',
+    'load arguments' => array('payment'),
+    'page callback' => 'paymentreference_page_finish',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $item['paymentreference/pay/%paymentreference_instance/%/%'] = array(
+    'load arguments' => array(3, 4),
+    'title' => 'Add a payment reference',
+    'title callback' => 'paymentreference_instance_title',
+    'title arguments' => array(2),
+    'page callback' => 'paymentreference_page',
+    'page arguments' => array(2, 3, 4),
+    'access callback' => 'paymentreference_instance_access',
+    'access arguments' => array(2),
+  );
+
+  return $item;
+}
+
+/**
+ * Implements hook_element_info().
+ */
+function paymentreference_element_info() {
+  $elements['paymentreference'] = array(
+    '#input' => TRUE,
+    '#process' => array('paymentreference_form_process_paymentreference'),
+    // The PID of a payment as the default value.
+    '#default_value' => 0,
+    '#element_validate' => array('paymentreference_form_process_paymentreference_validate'),
+    // An array of PaymentLineItem objects.
+    '#payment_line_items' => array(),
+    '#payment_currency_code' => 'XXX',
+    // The path to the page where a payment can be added for this reference.
+    '#payment_add_page_path' => '',
+    // A callback that returns the PID of a payment that can be used as a
+    // reference.
+    '#payment_load_callback' => '',
+    // Arguments to pass on to the #payment_load_callback callback.
+    '#payment_load_arguments' => array(),
+  );
+
+  return $elements;
+}
+
+/**
+ * Implements hook_page_alter().
+ */
+function paymentreference_page_alter(&$page) {
+  if (arg(0) == 'paymentreference') {
+    $skip_regions = array_diff(element_children($page), array('content'));
+    foreach ($skip_regions as $skip_region) {
+      $page[$skip_region]['#access'] = FALSE;
+    }
+  }
+}
+
+/**
+ * Implements menu wildcard loader to load a field instance.
+ *
+ * @param string $entity_type
+ * @param string $bundle
+ * @param string $field_name
+ *
+ * @return false|array
+ */
+function paymentreference_instance_load($entity_type, $bundle, $field_name) {
+  $instance = field_info_instance($entity_type, $field_name, $bundle);
+
+  return $instance ? $instance : FALSE;
+}
+
+/**
+ * Check if the user has access to add a payment for a field instance.
+ *
+ * @param array $instance
+ *
+ * @return boolean
+ */
+function paymentreference_instance_access(array $instance) {
+  global $user;
+
+  // Check field permissions.
+  if (!field_access('edit', field_info_field($instance['field_name']), $instance['entity_type'])) {
+    return FALSE;
+  }
+  // Deny access if the user already has a payment available for this instance.
+  if (paymentreference_load($instance['entity_type'], $instance['bundle'], $instance['field_name'], $user->uid)) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Implements hook_field_info().
+ */
+function paymentreference_field_info() {
+  $field['paymentreference'] = array(
+    'label' => t('Payment reference'),
+    'description' => t('Adds a reference to a payment.'),
+    'instance_settings' => array(
+      'amount' => 0,
+      'currency_code' => 'XXX',
+      'description' => '',
+    ),
+    'default_widget' => 'paymentreference',
+    'default_formatter' => 'paymentreference',
+  );
+
+  return $field;
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function paymentreference_field_widget_info() {
+  $widget['paymentreference'] = array(
+    'label' => t('Payment reference'),
+    'description' => t('Allows users to select existing unused payments, or to add a new payment on the fly.'),
+    'field types' => array('paymentreference'),
+    'behaviors' => array(
+      'multiple values' => FIELD_BEHAVIOR_DEFAULT,
+      'default value' => FIELD_BEHAVIOR_NONE,
+    ),
+  );
+
+  return $widget;
+}
+
+/**
+ * Implements hook_field_instance_settings_form().
+ */
+function paymentreference_field_instance_settings_form($field, $instance) {
+  $form = array();
+
+  if ($instance['widget']['type'] == 'paymentreference') {
+    $form['currency_code'] = array(
+      '#type' => 'select',
+      '#title' => t('Currency'),
+      '#options' => payment_currency_options(),
+      '#default_value' => $instance['settings']['currency_code'],
+      '#required' => TRUE,
+    );
+    $form['amount'] = array(
+      '#type' => 'payment_amount',
+      '#title' => t('Amount'),
+      '#default_value' => $instance['settings']['amount'],
+      '#required' => TRUE,
+      '#currency_code' => '',
+    );
+    $form['description'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Payment description'),
+      '#default_value' => $instance['settings']['description'],
+      '#required' => TRUE,
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function paymentreference_field_widget_form(array &$form, array &$form_state, array $field, array $instance, $langcode, array $items, $delta, array $element) {
+  global $user;
+
+  if ($instance['widget']['type'] == 'paymentreference') {
+    $line_items = array(new PaymentLineItem(array(
+      'amount' => $instance['settings']['amount'],
+      'description' => $instance['settings']['description'],
+      'name' => 'paymentreference',
+    )));
+    $element['pid'] = array(
+      '#type' => 'paymentreference',
+      '#default_value' => isset($items[$delta]) ? $items[$delta]['pid'] : 0,
+      '#required' => $instance['required'],
+      '#payment_line_items' => $line_items,
+      '#payment_currency_code' => $instance['settings']['currency_code'],
+      '#payment_add_page_path' => 'paymentreference/pay/' . $instance['entity_type'] . '/' . $instance['bundle'] . '/' . $instance['field_name'],
+      '#payment_load_callback' => 'paymentreference_load',
+      '#payment_load_arguments' => array($instance['entity_type'], $instance['bundle'], $instance['field_name'], $user->uid),
+    ) + $element;
+  }
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_validate().
+ */
+function paymentreference_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+  global $user;
+
+  if ($field['type'] == 'paymentreference') {
+    foreach ($items as $delta => $item) {
+      // Check if there is a value at all.
+      if (empty($item['pid'])) {
+        // Check if the value is required.
+        if ($instance['required']) {
+          $errors[$field['field_name']][$langcode][$delta][] = array(
+            'error' => 'paymentreference_missing',
+            'message' => t('Payment is required'),
+          );
+        }
+        // There is no value to validate, so stop validation for this item.
+        break;
+      }
+
+      // Check if this is an existing entity (which means it has an ID).
+      $ids = entity_extract_ids($entity_type, $entity);
+      if ($ids[0]) {
+        // Check if the entity already has a value for this field and if it
+        // equals the new value.
+        $query = new EntityFieldQuery();
+        $count = $query->fieldCondition($field['field_name'], 'pid', $item['pid'])
+          ->count()
+          ->execute();
+        if ($count) {
+          // The value hasn't changed, so stop validation for this item.
+          break;
+        }
+      }
+
+      // Check if the selected payment is available for this user and this
+      // reference.
+      if (paymentreference_load_instance($item['pid'], $user->uid) === FALSE) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'paymentreference_invalid_pid',
+          'message' => t('The selected payment does not exist or is not available.'),
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_field_widget_error().
+ */
+function paymentreference_field_widget_error($element, $error, $form, &$form_state) {
+  form_error($element, $error['message']);
+}
+
+/**
+ * Implements hook_field_is_empty().
+ */
+function paymentreference_field_is_empty(array $item, array $field) {
+  if ($field['type'] == 'paymentreference') {
+    return empty($item['pid']);
+  }
+}
+
+/**
+ * Implements hook_field_insert().
+ */
+function paymentreference_field_insert($entity_type, $entity, array $field, array $instance, $langcode, array &$items) {
+  if ($field['type'] == 'paymentreference') {
+    foreach ($items as $item) {
+      paymentreference_delete_by_pid($item['pid']);
+    }
+  }
+}
+
+/**
+ * Implements hook_field_delete_field().
+ */
+function paymentreference_field_delete_field(array $field) {
+  paymentreference_delete_by_field($field['field_name']);
+}
+
+/**
+ * Implements hook_field_delete_instance().
+ */
+function paymentreference_field_delete_instance(array $instance) {
+  paymentreference_delete_by_field_instance($instance['entity_type'], $instance['bundle'], $instance['field_name']);
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_ACTION().
+ */
+function paymentreference_payment_insert(Payment $payment) {
+  if (!empty($payment->context_data['paymentreference'])) {
+    paymentreference_insert($payment->context_data['entity_type'], $payment->context_data['bundle'], $payment->context_data['field_name'], $payment->pid);
+  }
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_ACTION().
+ */
+function paymentreference_payment_delete(Payment $payment) {
+
+  paymentreference_delete_by_pid($payment->pid);
+}
+
+/**
+ * Check if a payment is available for referencing.
+ *
+ * @param integer $pid
+ *   The PID of the payment to check.
+ * @param integer $uid
+ *   The UID of the user that should be the payment's owner.
+ *
+ * @return false|array
+ *   FALSE if the payment is not available. Otherwise an array with keys
+ *   "entity_type", "bundle", and "field_name" to identify the instance with
+ *   the payment is for.
+ */
+function paymentreference_load_instance($pid, $uid) {
+  $query = db_select('paymentreference', 'pr');
+  $query->addJoin('INNER', 'payment', 'p', 'p.pid = pr.pid');
+
+  return $query->fields('pr', array('entity_type', 'bundle', 'field_name'))
+    ->condition('pr.pid', $pid)
+    ->condition('uid', $uid)
+    ->execute()
+    ->fetchAssoc();
+}
+
+/**
+ * Load the PID of a Payments available for referencing through an instance.
+ *
+ * @param string $entity_type
+ *   The entity_type for which the payment should be available.
+ * @param string $bundle
+ *   The bundle of $entity_type for which the payment should be available.
+ * @param string $field_name
+ *   The name of the field on $bundle for which the payment should be
+ *   available.
+ * @param integer $uid
+ *   The UID of the user for whom the payment should be available.
+ *
+ * @return integer|false
+ */
+function paymentreference_load($entity_type, $bundle, $field_name, $uid) {
+  $query = db_select('paymentreference', 'pr');
+  $query->addJoin('INNER', 'payment', 'p', 'p.pid = pr.pid');
+  $query->addJoin('INNER', 'payment_status_item', 'psi', 'p.psiid_last = psi.psiid');
+  $query->fields('pr', array('pid'))
+    ->condition('entity_type', $entity_type)
+    ->condition('bundle', $bundle)
+    ->condition('field_name', $field_name)
+    ->condition('status', array_merge(payment_status_info(PAYMENT_STATUS_SUCCESS)->descendants(), array(PAYMENT_STATUS_SUCCESS)))
+    ->condition('uid', $uid)
+    // Order by pid ASC, so we use the oldest payment first.
+    ->orderBy('pid')
+    ->range(0, 1);
+
+  return $query->execute()->fetchField();
+}
+
+/**
+ * Insert a Payment available for referencing through a field instance.
+ *
+ * @param string $entity_type
+ *   The entity_type for which the payment is available.
+ * @param string $bundle
+ *   The bundle of $entity_type for which the payment is available.
+ * @param string $field_name
+ *   The name of the field on $bundle for which the payment is available.
+ * @param integer $pid
+ *   The PID of the available payment.
+ *
+ * @return integer
+ *   SAVED_NEW
+ */
+function paymentreference_insert($entity_type, $bundle, $field_name, $pid) {
+  $data = array(
+    'entity_type' => $entity_type,
+    'bundle' => $bundle,
+    'field_name' => $field_name,
+    'pid' => $pid,
+  );
+
+  return drupal_write_record('paymentreference', $data);
+}
+
+/**
+ * Delete a Payment from the queue by PID.
+ *
+ * @param integer $pid
+ */
+function paymentreference_delete_by_pid($pid) {
+  db_delete('paymentreference')
+    ->condition('pid', $pid)
+    ->execute();
+}
+
+/**
+ * Delete a Payment from the queue by field.
+ *
+ * @param string $field_name
+ */
+function paymentreference_delete_by_field($field_name) {
+  db_delete('paymentreference')
+    ->condition('field_name', $field_name)
+    ->execute();
+}
+
+/**
+ * Delete a Payment from the queue by field instance.
+ *
+ * @param string $entity_type
+ * @param string $bundle
+ * @param string $field_name
+ */
+function paymentreference_delete_by_field_instance($entity_type, $bundle, $field_name) {
+  db_delete('paymentreference')
+    ->condition('field_name', $field_name)
+    ->condition('entity_type', $entity_type)
+    ->condition('bundle', $bundle)
+    ->execute();
+}
+
+/**
+ * Return the page title for a field instance.
+ *
+ * @param array $instance
+ *
+ * @return string
+ */
+function paymentreference_instance_title(array $instance) {
+  return $instance['label'];
+}
+
+/**
+ * Return a payment page for a field instance.
+ *
+ * @param array $instance
+ *
+ * @return array
+ *   A Drupal build array.
+ */
+function paymentreference_page(array $instance) {
+  $payment = new Payment(array(
+    'context_data' => array(
+      'paymentreference' => TRUE,
+      'entity_type' => $instance['entity_type'],
+      'bundle' => $instance['bundle'],
+      'field_name' => $instance['field_name'],
+    ),
+    'currency_code' => $instance['settings']['currency_code'],
+    'description' => $instance['settings']['description'],
+    'finish_callback' => 'paymentreference_payment_finish',
+  ));
+  // @todo Description should be US English, but can be anything.
+  $payment->setLineItem(new PaymentLineItem(array(
+    'amount' => $instance['settings']['amount'],
+    'description' => $instance['settings']['description'],
+    'name' => 'paymentreference',
+  )));
+
+  return drupal_get_form('payment_form_standalone', $payment);
+}
+
+/**
+ * Implements Payment::finish_callback.
+ */
+function paymentreference_payment_finish(Payment $payment) {
+  $_SESSION['paymentreference_pid'] = $payment->pid;
+  drupal_goto('paymentreference/finish');
+}
+
+/**
+ * Menu page callback to call after a payment reference payment has finished.
+ *
+ * @return integer|array
+ */
+function paymentreference_page_finish() {
+  if (isset($_SESSION['paymentreference_pid'])) {
+    // Assign the PID to the local scope and remove it from the session.
+    $pid = $_SESSION['paymentreference_pid'];
+    unset($_SESSION['paymentreference_pid']);
+
+    // Load the payment and the instance it's for, and build the page.
+    if ($payment = entity_load_single('payment', $pid)) {
+      $instance_info = paymentreference_load_instance($pid, $payment->uid);
+      $instance = field_info_instance($instance_info['entity_type'], $instance_info['field_name'], $instance_info['bundle']);
+      drupal_set_title($instance['label']);
+      return array(
+        '#type' => 'markup',
+        '#markup' => t('Your payment is %status. You can now <span class="paymentreference-window-close">close this window</span>.', array(
+          '%status' => payment_status_info($payment->getStatus()->status, TRUE)->title,
+        )),
+        '#attached' => array(
+          'js' => array(drupal_get_path('module', 'paymentreference') . '/js/paymentreference.js'),
+        ),
+      );
+    }
+  }
+  return MENU_ACCESS_DENIED;
+}
+
+/**
+ * Implements form submit callback for paymentreference_field_widget_form().
+ */
+function paymentreference_field_widget_form_refresh_submit(array $form, array &$form_state) {
+  $form_state['rebuild'] = TRUE;
+}
+
+/**
+ * Implements hook_field_access().
+ */
+function paymentreference_field_access($op, $field, $entity_type, $entity, $account) {
+  global $user;
+
+  if ($field['type'] == 'paymentreference') {
+    return !empty($user->uid);
+  }
+  return TRUE;
+}
+
+/**
+ * Implements form process callback for paymentreference elements.
+ */
+function paymentreference_form_process_paymentreference(array $element, array &$form_state, array $form) {
+  $pid = $element['#default_value'];
+  if (!$pid) {
+    $pid = (int) call_user_func_array($element['#payment_load_callback'], $element['#payment_load_arguments']);
+  }
+
+  // AJAX.
+  $ajax_wrapper_id = drupal_html_id('paymentreference-' . $element['#name']);
+  $element['#prefix'] = '<div id="' . $ajax_wrapper_id . '">';
+  $element['#suffix'] = '</div>';
+  $element['#attached']['js'] = array(
+    drupal_get_path('module', 'paymentreference') . '/js/paymentreference.js',
+    array(
+    'type' => 'setting',
+      'data' => array(
+        'PaymentreferencePaymentAvailable' => array(
+          $ajax_wrapper_id => !empty($pid),
+        ),
+      ),
+    ),
+  );
+  
+  // Payment information.
+  $header = array(t('Amount'), t('Status'), t('Last updated'));
+  if (!$pid) {
+    $amount = 0;
+    foreach ($element['#payment_line_items'] as $line_item) {
+      $amount += $line_item->totalAmount(TRUE);
+    }
+    $row = array(
+      payment_amount_human_readable($amount, $element['#payment_currency_code']),
+      array(
+        'data' => t('<a href="@url" target="_blank">Add a new payment</a> (opens in a new window)', array(
+          '@url' => url($element['#payment_add_page_path']),
+        )),
+        'colspan' => 2,
+      ),
+    );
+  }
+  else {
+    $payment = entity_load_single('payment', $pid);
+    $row = array(
+      payment_amount_human_readable($payment->totalAmount(TRUE), $payment->currency_code),
+      payment_status_info($payment->getStatus()->status, TRUE)->title,
+      format_date($payment->getStatus()->created),
+    );
+    if (payment_access('view', $payment)) {
+      $header[] = t('Operations');
+      $row[] = t('<a href="@url" target="_blank">View payment details</a> (opens in a new window)', array(
+        '@url' => url('payment/' . $payment->pid),
+      ));
+    }
+  }
+  $element['payment'] = array(
+    '#type' => 'item',
+    '#title' => isset($element['#title']) ? $element['#title'] : '',
+    '#description' => isset($element['#description']) ? $element['#description'] : '',
+    '#required' => $element['#required'],
+    '#markup' => theme('table', array(
+      'header' => $header,
+      'rows' => array($row),
+    )),
+  );
+  
+  // Refresh button.
+  $element['refresh'] = array(
+    '#type' => 'submit',
+    '#value' => t('Re-check available payments'),
+    '#submit' => isset($element['#submit']) ? $element['#submit'] : array(),
+    '#limit_validation_errors' => array(),
+    '#ajax' => array(
+      'callback' => 'paymentreference_form_process_paymentreference_ajax_callback',
+      'effect' => 'fade',
+      'event' => 'mousedown',
+      'wrapper' => $ajax_wrapper_id,
+      'progress' => array(),
+    ),
+    '#attributes' => array(
+      'class' => array('paymentreference-refresh-button', 'js-hide'),
+    ),
+    '#name' => $element['#name'] . '_refresh',
+  );
+  $form_state[$element['refresh']['#name']] = $element['#parents'];
+
+  return $element;
+}
+
+/**
+ * Implements form AJAX callback for paymentreference elements.
+ */
+function paymentreference_form_process_paymentreference_ajax_callback(array $form, array &$form_state) {
+  return drupal_array_get_nested_value($form, $form_state[$form_state['triggering_element']['#name']]);
+}
+
+/**
+ * Implements form validate callback for paymentreference elements.
+ */
+function paymentreference_form_process_paymentreference_validate(array $element, array &$form_state) {
+  $pid = call_user_func_array($element['#payment_load_callback'], $element['#payment_load_arguments']);
+  if ($element['#required'] && !$pid) {
+    form_error($element, t('!name field is required.', array(
+      '!name' => $element['#title'],
+    )));
+  }
+  form_set_value($element, $pid, $form_state);
+}

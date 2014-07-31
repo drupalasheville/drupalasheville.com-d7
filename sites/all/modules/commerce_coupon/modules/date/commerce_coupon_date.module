@@ -1,0 +1,118 @@
+<?php
+
+/*
+ * Implements hook_inline_conditions_info.
+ */
+function commerce_coupon_date_inline_conditions_info() {
+  $conditions['commerce_coupon_date_evaluate_date'] = array(
+    'label' => t('Date range'),
+    'entity type' => 'commerce_coupon',
+    'callbacks' => array(
+      'configure' => 'commerce_coupon_date_evaluate_date_configure',
+      'build' => 'commerce_coupon_date_evaluate_date_build',
+    ),
+  );
+  
+  return $conditions;
+}
+
+/*
+ * Inline conditions build callback: evaluate date range.
+ */
+function commerce_coupon_date_evaluate_date_build($coupon, $start = NULL, $end = NULL) {
+  // We want end to be the end of the day on whatever day they choose.
+  if ($end) {
+    $end += 86400;
+  }
+  
+  // Error message building blocks.
+  $date_format = 'D, m/d/Y';  
+  $error_msg_prefix = t('Unfortunately, this coupon is only valid ');  
+  $lower_pass_msg = t('starting %start', array('%start' => format_date($start, 'custom', $date_format)));  
+  $upper_pass_msg = t('until %end', array('%end' => format_date($end, 'custom', $date_format)));
+  
+  // Comparisons
+  $lower_pass = REQUEST_TIME >= $start;
+  $upper_pass = REQUEST_TIME <= $end;
+  
+  if ($start && $end) {
+    $outcome = $lower_pass && $upper_pass;
+    $message = $error_msg_prefix . $lower_pass_msg . ' ' . $upper_pass_msg;
+  } 
+  else if ($end) {
+    $outcome = $upper_pass;
+    $message = $error_msg_prefix . $upper_pass_msg;    
+  }
+  else if ($start) {
+    $outcome = $lower_pass;
+    $message = $error_msg_prefix . $lower_pass_msg;    
+  }
+  
+  if (!$outcome) {
+    $error = &drupal_static('commerce_coupon_error_' . strtolower($coupon->code));
+    $error = $message;
+  }
+  
+  return $outcome;
+}
+
+/*
+ * Inline conditions configure callback: date range form.
+ */
+function commerce_coupon_date_evaluate_date_configure($settings) {
+  if (is_string($settings)) {
+    $settings = unserialize($settings);
+  }
+  
+  $form['start'] = array(
+    '#type' => 'date_popup',
+    '#title' => t('Start date'),
+    '#date_format' => 'm/d/Y',
+    '#default_value' => !empty($settings['start']) ? $settings['start'] : '',
+    '#element_validate' => array('commerce_coupon_date_range_start_validate')
+  );
+  
+  $form['end'] = array(
+    '#type' => 'date_popup',
+    '#title' => t('End date'),
+    '#date_format' => 'm/d/Y',      
+    '#default_value' => !empty($settings['end']) ? $settings['end'] : '',   
+  );  
+  
+  return $form;
+}
+
+/*
+ * Element validate callback: validate start date
+ */
+function commerce_coupon_date_range_start_validate($element, &$form_state, $form) {
+  if (empty($element['#value']['date'])) {
+    return;
+  }
+  
+  $type = array_pop($element['#parents']);
+  $parents = $element['#parents'];
+  $parents[] = $type == 'start' ? 'end' : 'start';
+  $comp_value = drupal_array_get_nested_value($form_state['values'], $parents);
+  
+  if (!empty($comp_value['date'])) {
+    // Get a timestamp for start date.
+    $start_date = new DateTime($element['#value']['date'] . ' ' . $element['#value']['time']);
+    $start_ts = date_format($start_date, 'U');
+    // Get a timestamp for end date.
+    $end_date = new DateTime($comp_value['date'] . ' ' . $comp_value['time']);
+    $end_ts = date_format($end_date, 'U');
+            
+    if ($start_ts > $end_ts) {
+      form_set_error(implode('][', $parents), t('Start date must be less than end date.'));
+    }
+  }
+}
+
+
+/*
+ * Implements hook_flush_caches().
+ */
+function commerce_coupon_date_flush_caches() {
+  _commerce_coupon_install_inline_conditions_field();
+}

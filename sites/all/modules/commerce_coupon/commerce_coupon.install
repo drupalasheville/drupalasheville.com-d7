@@ -1,0 +1,285 @@
+<?php
+
+/**
+ * Field setup
+ */
+function commerce_coupon_install_helper() {
+  field_info_cache_clear();
+
+  $fields = field_info_fields();
+  $instances = field_info_instances();
+  $field_types = field_info_field_types();
+
+  /*
+   * Discount coupon reference field
+   */
+
+  if (empty($fields['commerce_discount_reference']) && isset($field_types['entityreference'])) {
+    // Create entity reference field.
+    $field = array(
+      'entity_types' => array('commerce_coupon'),
+      'cardinality' => FIELD_CARDINALITY_UNLIMITED,
+      'settings' => array(
+        'handler' => 'base',
+        'target_type' => 'commerce_discount',
+        'handler_setting' => array()
+      ),
+      'field_name' => 'commerce_discount_reference',
+      'type' => 'entityreference',
+      'locked' => TRUE,
+    );
+    field_create_field($field);
+  }
+
+  // Add discount reference to discount coupon
+  if (empty($instances['commerce_coupon']['discount_coupon']['commerce_discount_reference'])) {
+    $instance = array(
+      'field_name' => 'commerce_discount_reference',
+      'entity_type' => 'commerce_coupon',
+      'bundle' => 'discount_coupon',
+      'label' => t('Discount reference'),
+      'required' => TRUE,
+      'widget' => array(
+        'type' => 'entityreference_autocomplete',
+        'module' => 'entityreference',
+      ),
+    );
+    field_create_instance($instance);
+  }
+
+  /*
+   * Order coupon reference field
+   */
+
+  if (empty($fields['commerce_coupons']) && isset($field_types['entityreference'])) {
+    // Create entity reference field.
+    $field = array(
+      'entity_types' => array('commerce_order'),
+      'cardinality' => FIELD_CARDINALITY_UNLIMITED,
+      'settings' => array(
+        'handler' => 'base',
+        'target_type' => 'commerce_coupon',
+      ),
+      'field_name' => 'commerce_coupons',
+      'type' => 'entityreference',
+      'locked' => TRUE,
+    );
+    field_create_field($field);
+  }
+
+  // Add coupons fields to all order bundles
+  $order_entity_info = entity_get_info('commerce_order');
+  foreach (array_keys($order_entity_info['bundles']) as $bundle) {
+    if (empty($instances['commerce_order'][$bundle]['commerce_coupons'])) {
+      $instance = array(
+        'field_name' => 'commerce_coupons',
+        'entity_type' => 'commerce_order',
+        'bundle' => 'commerce_order',
+        'label' => t('Coupons'),
+        'required' => FALSE,
+        'widget' => array(
+          'type' => 'entityreference_autocomplete',
+          'module' => 'entityreference',
+        ),
+      );
+      field_create_instance($instance);
+    }
+  }
+}
+
+/*
+ * Implements hook_install().
+ */
+function commerce_coupon_install() {
+  // Install fields.
+  commerce_coupon_install_helper();
+}
+
+/*
+ * Implements hook_schema().
+ */
+function commerce_coupon_schema() {
+  $schema['commerce_coupon'] = array(
+    'description' => 'The base table for coupons.',
+    'fields' => array(
+      'coupon_id' => array(
+        'description' => 'The primary identifier for the coupon.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'An identifier for the user who owns this coupon',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'type' => array(
+        'description' => 'The type of this coupon.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'code' => array(
+        'description' => 'The code of this coupon.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'bulk' => array(
+        'description' => 'Whether or not this coupon code was generated in bulk.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the coupon was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the coupon was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'Whether or not this coupon is enabled.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0
+      ),
+      'data' => array(
+        'type' => 'blob',
+        'size' => 'big',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+        'description' => 'Everything else, serialized.',
+      ),
+    ),
+    'indexes' => array(
+      'uid' => array('uid'),
+    ),
+    'primary key' => array('coupon_id'),
+    'foreign keys' => array(
+      'uid' => array(
+        'table' => 'users',
+        'column' => array('uid' => 'uid')
+      ),
+    ),
+    'unique keys' => array(
+      'code' => array('code')
+    )
+  );
+
+  return $schema;
+}
+
+/**
+ * Clear cache to rebuild rules and views.
+ */
+function commerce_coupon_update_7201() {
+  // Make sure rules and views get rebuilt
+  drupal_flush_all_caches();
+}
+
+/**
+ * Add "changed" and "data' fields.
+ */
+function commerce_coupon_update_7202() {
+  // Add "changed" field.
+  if (!db_field_exists('commerce_coupon', 'changed')) {
+    $field = array(
+      'description' => 'The Unix timestamp when the coupon was most recently saved.',
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    );
+
+    db_add_field('commerce_coupon', 'changed', $field);
+  }
+  // Add "data" field.
+  if (!db_field_exists('commerce_coupon', 'data')) {
+    $field = array(
+      'type' => 'blob',
+      'size' => 'big',
+      'not null' => FALSE,
+      'serialize' => TRUE,
+      'description' => 'Everything else, serialized.',
+    );
+
+    db_add_field('commerce_coupon', 'data', $field);
+  }
+}
+
+/*
+ * Implements hook_uninstall().
+ */
+function commerce_coupon_uninstall() {
+  module_load_include('module', 'commerce');
+
+  // Delete any field instance attached to a coupon type.
+  commerce_delete_instances('commerce_coupon');
+
+  // Remove coupon reference field instance on order
+  if ($instance = field_info_instance('commerce_order', 'commerce_coupons', 'commerce_order')) {
+    commerce_delete_instance($instance);
+  }
+}
+
+/**
+ * Upgrade a Coupons 1.x site to 2.x. MAKE A BACKUP BEFORE DOING THIS.
+ */
+function commerce_coupon_update_7200(&$sandbox) {
+  module_load_include('inc', 'commerce_coupon', 'includes/commerce_coupon.update');
+  if (!module_enable(array('commerce_discount'))) {
+    throw new DrupalUpdateException('Commerce Discount is a new dependency of Commerce Coupon - you must add it to your site.');
+  }
+
+  if (!isset($sandbox['did_schema_updates'])) {
+    $schema = drupal_get_schema_unprocessed('commerce_coupon', 'commerce_coupon');
+    $fields = $schema['fields'];
+
+    // Change "is active" field to "status".
+    db_change_field('commerce_coupon', 'is_active', 'status', $fields['status']);
+
+    // Add all the new columns
+    db_add_field('commerce_coupon', 'bulk', $fields['bulk']);
+    db_add_field('commerce_coupon', 'code', $fields['code']);
+    db_add_field('commerce_coupon', 'uid', $fields['uid']);
+
+    // Indexes
+    db_add_index('commerce_coupon', 'code', array('code'));
+    db_add_index('commerce_coupon', 'uid', array('uid'));
+
+    // Disable coupons ui module
+    module_disable(array('commerce_coupon_ui'));
+
+    // Enable dependencies
+    module_enable(array('commerce_discount', 'inline_conditions', 'commerce_coupon_usage'));
+
+    // Install coupon fields.
+    commerce_coupon_install_helper();
+
+    // Add the inline conditions field because we're going to need it.
+    _commerce_coupon_install_inline_conditions_field();
+
+    $sandbox['did_schema_updates'] = TRUE;
+  }
+
+  $drush = function_exists('drush_print');
+
+  // Update coupon entities
+  _commerce_coupon_update_coupons_multipass($sandbox, $drush);
+
+  // Update order entities
+  _commerce_coupon_update_orders_multipass($sandbox, $drush);
+
+  $sandbox['#finished'] = $sandbox['coupons']['#finished'] >= 1 && $sandbox['orders']['#finished'] >= 1;
+  if ($sandbox['#finished'] == TRUE) {
+    module_disable(array('commerce_coupon_pct', 'commerce_coupon_fixed_amount'));
+  }
+}

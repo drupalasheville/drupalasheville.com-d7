@@ -1,0 +1,63 @@
+<?php
+
+/*
+ * Implements hook_install().
+ */
+function commerce_coupon_user_install() {
+  _commerce_coupon_user_install_helper();
+}
+
+/**
+ * Field setup
+ */
+function _commerce_coupon_user_install_helper() {
+  field_info_cache_clear();
+
+  $fields = field_info_fields();
+  $instances = field_info_instances();
+  
+  // Add an entity reference field for recipient.
+  if (empty($fields['commerce_coupon_recipient'])) {
+    $field = array(
+      'settings' => array(
+        'target_type' => 'user',
+      ),
+      'field_name' => 'commerce_coupon_recipient',
+      'type' => 'entityreference',
+      'cardinality' => '1',
+    );
+    field_create_field($field);
+  }
+  foreach (commerce_coupon_get_types() as $bundle => $info) {
+    if (empty($instances['commerce_coupon'][$bundle]['commerce_coupon_recipient'])) {
+      $instance = array(
+        'label' => 'Recipient',
+        'widget' => array(
+          'type' => 'entityreference_autocomplete',
+          'weight' => '10',
+        ),
+        'description' => 'Choose a recipient for this coupon code',
+        'field_name' => 'commerce_coupon_recipient',
+        'entity_type' => 'commerce_coupon',
+        'bundle' => $bundle,
+        'default_value' => NULL,
+      );
+      field_create_instance($instance);
+    }
+  }
+}
+
+/*
+ * Implements hook_uninstall().
+ */
+function commerce_coupon_user_uninstall() {
+  field_info_cache_clear();
+  module_load_include('module', 'commerce_coupon');
+  $instances = field_info_instances();
+  
+  foreach (commerce_coupon_get_types() as $bundle => $info) {
+    if (!empty($instances['commerce_coupon'][$bundle]['commerce_coupon_recipient'])) {
+      commerce_delete_instance($instances['commerce_coupon'][$bundle]['commerce_coupon_recipient']);
+    }
+  }
+}

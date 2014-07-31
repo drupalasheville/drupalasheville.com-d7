@@ -1,0 +1,39 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestPaymentStatusItemWebTestCase.
+ */
+
+/**
+ * Test payment status item handling.
+ */
+class PaymentTestPaymentStatusItemWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment status item handling',
+      'group' => 'Payment',
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules = array('payment'));
+  }
+
+  /**
+   * Test payment status item handling.
+   */
+  function testPaymentStatusItem() {
+    $payment = new Payment;
+    $status_pending = new PaymentStatusItem(PAYMENT_STATUS_PENDING);
+    $status_success = new PaymentStatusItem(PAYMENT_STATUS_SUCCESS);
+    $payment->setStatus($status_pending);
+    $payment->setStatus($status_success);
+    $this->assertTrue($payment->getStatus() === $status_success, 'Payment::setStatus() sets status items in the right order and Payment::getStatus() retrieves them.');
+  }
+}

@@ -1,0 +1,50 @@
+<?php
+
+/**
+ * @file
+ * Contains PaymentmethodbasicTestModuleInstallUninstall.
+ */
+
+/**
+ * Tests module installation and uninstallation.
+ */
+class PaymentmethodbasicTestModuleInstallUninstall extends DrupalWebTestCase {
+
+  /**
+   * {@inheritdoc}
+   */
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Module installation and uninstallation',
+      'group' => 'Basic Payment Method',
+    );
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setUp() {
+    parent::setUp('paymentmethodbasic');
+  }
+
+  /**
+   * Test installation and uninstallation.
+   */
+  function testInstallationAndUninstallation() {
+    $this->assertTrue(module_exists('paymentmethodbasic'));
+
+    // Test default configuration.
+    $names = array('collect_on_delivery', 'no_payment_required');
+    $payment_methods = entity_load('payment_method');
+    $payment_method_names = array();
+    foreach ($payment_methods as $payment_method) {
+      $payment_method_names[] = $payment_method->name;
+    }
+    $this->assertFalse(array_diff($names, $payment_method_names));
+
+    module_disable(array('paymentmethodbasic'));
+    drupal_uninstall_modules(array('paymentmethodbasic'));
+    $this->assertFalse(module_exists('paymentmethodbasic'));
+  }
+}

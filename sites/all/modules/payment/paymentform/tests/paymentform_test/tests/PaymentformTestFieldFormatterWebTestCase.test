@@ -1,0 +1,42 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentformTestFieldFormatterWebTestCase.
+ */
+
+/**
+ * Tests the paymentform field formatter.
+ */
+class PaymentformTestFieldFormatterWebTestCase extends PaymentformWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment form field formatter',
+      'group' => 'Payment Form Field',
+      'dependencies' => array('paymentform_test'),
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('paymentform_test'));
+  }
+
+  /**
+   * Test the paymentform field formatter.
+   */
+  function testPaymentformFieldFormatter() {
+    $node = $this->drupalCreateNode(array(
+      'type' => $this->content_type->type,
+    ));
+    $node->field_paymentform[LANGUAGE_NONE][0] = $this->PaymentLineItemData;
+    node_save($node);
+    $this->drupalGet('node/' . $node->nid);
+    $elements = $this->xpath('//form[@id="payment-form-standalone"]');
+    $this->assertTrue(isset($elements[0]), 'The <em>Payment form</em> field formatter shows a payment form.');
+  }
+}

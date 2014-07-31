@@ -1,0 +1,10 @@
+name = Commerce Coupon User
+description = Associate coupons with specific users
+core = 7.x
+dependencies[] = commerce_coupon
+; Information added by Drupal.org packaging script on 2014-07-18
+version = "7.x-2.0-beta3+3-dev"
+core = "7.x"
+project = "commerce_coupon"
+datestamp = "1405719533"
+

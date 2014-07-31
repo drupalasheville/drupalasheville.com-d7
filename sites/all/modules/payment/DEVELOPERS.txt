@@ -1,0 +1,53 @@
+PROCESSING A PAYMENT
+--------------------
+The payment workflow consists of objects of several classes, and constants. The
+API-related classes are located in payment/payment.classes.inc and constants
+are defined in payment/payment.module.
+
+To process a payment, you will need to create a Payment object and set the
+necessary properties, such as:
+- A PaymentMethod object in Payment::method, which in turn has a
+  PaymentMethodController object in PaymentMethod::controller.
+- One or more PaymentLineItem objects in Payment::line_items, keyed by
+  PaymentLineItem::name. See Payment::setLineItem().
+- One or more PaymentStatusItem objects in Payment::statuses, which can be set
+  through Payment::setStatus().
+Once this is completed, call $payment->execute(). If the payment and its
+payment are valid (they can work together), the payment will be executed. You
+should do nothing important after payment execution, because the payment method
+is allowed to redirect the user off-site. Instead, payment post-processing
+should happen in Payment::finish_callback. Right after you call
+Payment::execute() you can, for instance, rebuild your payment form if
+execution failed and the user was not redirected. If the payment method did
+redirect the user, your finish callback will need to take care of this.
+
+PAYMENT STATUSES
+----------------
+Payment statuses are strings and are exposed in hook_payment_status_info() as
+PaymentStatusInfo objects that contain metadata such as relationships with
+other payment statuses and human-readable information.
+
+For payments they are used as PaymentStatusItem objects, which contain extra
+information with respect to the particular payment they belong to, such as the
+datetime at which they were set.
+
+PAYMENT LINE ITEMS
+--------------
+Payment line item types are exposed in hook_payment_line_item_info() as
+PaymentLineItemInfo objects that contain metadata such as human-readable
+information and settings needed to get line items from Payment objects.
+Using a custom callback, multiple line items can be retrieved from a payment
+using the same machine name. See payment_payment_line_item_info(), the line
+item type "payment_all" defined there and its callback
+payment_line_item_get_all() for an example.
+
+For payments you'll have to use PaymentLineItem objects, which contain extra
+information with respect to the particular payment they belong to, such as a
+human-readable description.
+
+Note that there does not have to be a 1:1 relationship between
+PaymentLineItem and PaymentLineItemInfo objects. A machine name used for a
+PaymentLineItem object does not necessarily have to be defined in
+hook_payment_line_item_info(), either because it can be retrieved by another
+line item type defined there, or because it should not be retrieved at
+all.

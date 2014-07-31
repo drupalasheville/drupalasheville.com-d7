@@ -1,0 +1,97 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentmethodbasicTestPaymentMethodBasicControllerWebTestCase.
+ */
+
+/**
+ * Tests PaymentMethodBasicController functionality.
+ */
+class PaymentmethodbasicTestPaymentMethodBasicControllerWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'PaymentMethodBasicController functionality',
+      'group' => 'Basic Payment Method',
+      'dependencies' => array('paymentmethodbasic_test'),
+    );
+  }
+
+  function setUp(array $modules = array()) {
+    parent::setUp(array('paymentmethodbasic_test'));
+  }
+
+  /**
+   * Test CRUD functionality.
+   */
+  function testCRUD() {
+    $payment_method = new PaymentMethod(array(
+      'controller' => payment_method_controller_load('PaymentMethodBasicController'),
+      'controller_data' => array(
+        'message' => 'foo',
+        'status' => PAYMENT_STATUS_FAILED,
+        'text_format' => 'bar',
+      ),
+    ));
+    entity_save('payment_method', $payment_method);
+    $pmid = $payment_method->pmid;
+    $count = db_query("SELECT COUNT(1) FROM {paymentmethodbasic} WHERE pmid = :pmid AND message = :message AND status = :status AND text_format = :text_format", array(
+      ':pmid' => $pmid,
+      ':message' => $payment_method->controller_data['message'],
+      ':status' => $payment_method->controller_data['status'],
+      ':text_format' => $payment_method->controller_data['text_format'],
+    ))->fetchField();
+    $this->assertTrue($count, "A new BasicPaymentMethodController payment method's controller data is inserted correctly.");
+
+    // Test loading a payment method.
+    $payment_method_loaded = entity_load_single('payment_method', $pmid);
+    $this->assertFalse(array_diff_assoc($payment_method->controller_data, $payment_method_loaded->controller_data), "An BasicPaymentMethodController payment method's controller data is loaded orrectly.");
+
+    // Test updating a payment method.
+    $payment_method->controller_data = array(
+      'message' => 'foo',
+      'status' => PAYMENT_STATUS_NEW,
+      'text_format' => 'bar',
+    );
+    entity_save('payment_method', $payment_method);
+    $count = db_query("SELECT COUNT(1) FROM {paymentmethodbasic} WHERE pmid = :pmid AND message = :message AND status = :status AND text_format = :text_format", array(
+      ':pmid' => $pmid,
+      ':message' => $payment_method->controller_data['message'],
+      ':status' => $payment_method->controller_data['status'],
+      ':text_format' => $payment_method->controller_data['text_format'],
+    ))->fetchField();
+    $this->assertTrue($count, "An BasicPaymentMethodController payment method's controller data is updated correctly.");
+
+    // Test deleting a payment method.
+    entity_delete('payment_method', $pmid);
+    $count = db_query("SELECT COUNT(1) FROM {paymentmethodbasic} WHERE pmid = :pmid", array(
+      ':pmid' => $pmid,
+    ))->fetchField();
+    $this->assertFalse($count, "An BasicPaymentMethodController payment method's controller data is deleted when the payment method is deleted.");
+  }
+
+  /**
+   * Test
+   * BasicPaymentMethodController::payment_method_configuration_form_elements_callback.
+   */
+  function testPaymentMethodFormCallback() {
+    $account = $this->drupalCreateUser(array('payment.payment_method.create.PaymentMethodBasicController'));
+    $this->drupalLogin($account);
+    $this->drupalPost('admin/config/services/payment/method/add/PaymentMethodBasicController', array(
+      'title_specific' => 'Foo',
+      'name' => 'foo',
+      'controller_form[message][value]' => 'bar',
+      'controller_form[status]' => PAYMENT_STATUS_FAILED,
+    ), t('Save'));
+    $payment_method = entity_load_single('payment_method', 3);
+    $reference = array(
+      'message' => 'bar',
+      'status' => PAYMENT_STATUS_FAILED,
+      'text_format' => 'plain_text',
+    );
+    debug($payment_method->controller_data);
+    $this->assertFalse(array_diff_assoc($reference, $payment_method->controller_data), "An BasicPaymentMethodController payment method's controller data is correctly saved by the payment method form.");
+  }
+}

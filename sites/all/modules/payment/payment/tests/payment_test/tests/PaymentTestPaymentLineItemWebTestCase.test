@@ -1,0 +1,78 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestPaymentLineItemWebTestCase.
+ */
+
+/**
+ * Tests line item handling.
+ */
+class PaymentTestPaymentLineItemWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment line item handling',
+      'group' => 'Payment',
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('payment_test'));
+  }
+
+  /**
+   * Test line item handling.
+   */
+  function testPaymentLineItemHandling() {
+    $payment = new Payment;
+    $payment->setLineItem(new PaymentLineItem(array(
+      'name' => 'foo',
+      'amount' => 19.11,
+      'tax_rate' => 0.1,
+    )));
+
+    // Test Payment::setLineItem();
+    $this->assertTrue($payment->line_items['foo']->name == 'foo', 'Payment::setLineItem() adds a PaymentLineItem object to Payment::line_items.');
+
+    // Test Payment::unitAmount() without tax.
+    $this->assertTrue($payment->line_items['foo']->unitAmount(FALSE) == 19.11, 'Payment::unitAmount() returns amount excluding tax.');
+
+    // Test Payment::unitAmount() with tax.
+    $this->assertTrue($payment->line_items['foo']->unitAmount(TRUE) == 21.021, 'Payment::unitAmount() returns amount including tax.');
+
+    // Test Payment::totalAmount() without tax.
+    $this->assertTrue($payment->totalAmount(FALSE) == 19.11, 'Payment::totalAmount() returns amount excluding tax.');
+
+    $payment->setLineItem(new PaymentLineItem(array(
+      'name' => 'bar',
+      'amount' => 19.78,
+    )));
+
+    // Test Payment::totalAmount() without passed on amounts.
+    $this->assertTrue($payment->totalAmount(TRUE) == 40.801, 'Payment::totalAmount() adds up Payment::line_items.');
+
+    $payment->setLineItem(new PaymentLineItem(array(
+      'name' => 'beer',
+      'amount' => 47.11,
+    )));
+
+    // Test Payment::totalAmount() with passed on amounts.
+    $line_items = $payment->getLineItems('payment_test');
+    $this->assertTrue($payment->totalAmount(TRUE, $line_items) == 40.801, 'Payment::totalAmount() adds up only passed on line items.');
+
+    // Test payment_line_item_get_specific() and whether
+    // Payment::getLineItems() can get line items that are not exposed
+    // through hook_payment_line_item_info().
+    $line_items = $payment->getLineItems('beer');
+    $this->assertTrue($payment->totalAmount(TRUE, $line_items) == 47.11, 'payment_line_item_get_specific() only returns the requested line item.');
+
+    // Test payment_line_item_get_all().
+    $line_items = $payment->getLineItems('payment_all');
+    $this->assertTrue(count($line_items) == 3, 'payment_line_item_get_all() returns all line items.');
+  }
+}

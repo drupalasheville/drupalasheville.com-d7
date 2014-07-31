@@ -1,0 +1,175 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations and shared functions.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function payment_test_menu() {
+  // @see PaymentLineItemFormElementWebTestCase
+  $items['payment_test-form-element-payment-line-item'] = array(
+    'title' => 'Test the payment_line_item form element',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('payment_test_form_payment_line_item'),
+    'access callback' => TRUE,
+  );
+  // @see PaymentAmountFormElementWebTestCase
+  // The second URL path argument is an optional float value specifying a
+  // minimum amount.
+  $items['payment_test-form-element-payment-amount'] = array(
+    'title' => 'Test the payment_amount form element',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('payment_test_form_payment_amount'),
+    'access callback' => TRUE,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_payment_form_alter().
+ */
+function payment_payment_form_alter(array &$elements, array &$form_state, array &$submit) {
+  // @see PaymentActionHookAndCallbackWebTestCase.
+  $elements['payment_test'] = TRUE;
+  $submit[] = 'payment_test';
+}
+
+/**
+ * Implements hook_payment_line_item_info().
+ */
+function payment_test_payment_line_item_info() {
+  return array(
+    new PaymentLineItemInfo(array(
+      'callback' => 'payment_test_line_item_get',
+      'name' => 'payment_test',
+      'title' => t('Payment Form amount'),
+    )),
+  );
+}
+
+/**
+ * Implements hook_payment_validate().
+ */
+function payment_test_payment_validate(Payment $payment, PaymentMethod $payment_method, $strict) {
+  if (isset($payment->payment_test_payment_validate)) {
+    throw new PaymentValidationException('payment_test');
+  }
+}
+
+/**
+ * Implements hook_payment_status_change().
+ */
+function payment_test_payment_status_change(Payment $payment, PaymentStatusItem $previous_status_item) {
+  $payment->payment_test_payment_status_change = TRUE;
+}
+
+/**
+ * Implements hook_payment_pre_execute().
+ */
+function payment_test_payment_pre_execute(Payment $payment) {
+  $payment->payment_test_payment_pre_execute = TRUE;
+}
+
+/**
+ * Implements hook_payment_pre_finish().
+ */
+function payment_test_payment_pre_finish(Payment $payment) {
+  $payment->payment_test_payment_pre_finish = TRUE;
+}
+
+/**
+ * Implements Payment finish callback.
+ */
+function payment_test_finish_callback(Payment $payment) {
+  $payment->payment_test_finish_callback = TRUE;
+}
+
+/**
+ * Implements PaymentLineItemInfo::callback.
+ */
+function payment_test_line_item_get($name, Payment $payment) {
+  return(array($payment->line_items['foo'], $payment->line_items['bar']));
+}
+
+/**
+ * Implements form build callback: show a payment_line_item element.
+ */
+function payment_test_form_payment_line_item(array $form, array &$form_state) {
+  $form['#submit'] = array('payment_test_form_payment_element');
+  $form['line_item'] = array(
+    '#type' => 'payment_line_item',
+    '#currency_code' => 'XXX',
+    '#cardinality' => 2,
+  );
+  if (arg(1) == 'default-values') {
+    $form['line_item']['#default_value'] = payment_test_default_line_items();
+  }
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+
+  return $form;
+}
+
+/**
+ * Return two default payment line items.
+ *
+ * @return array
+ */
+function payment_test_default_line_items() {
+  return array(
+    new PaymentLineItem(array(
+      'amount' => 1.1,
+      'quantity' => 1,
+      'tax_rate' => 0.1,
+      'description' => 'description_1',
+      'name' => 'name_1',
+    )),
+    new PaymentLineItem(array(
+      'amount' => 2.2,
+      'quantity' => 2,
+      'tax_rate' => 0.2,
+      'description' => 'description_2',
+      'name' => 'name_2',)),
+  );
+}
+
+/**
+ * Implements form build callback: show a payment_amount element.
+ */
+function payment_test_form_payment_amount(array $form, array &$form_state) {
+  $form['#submit'] = array('payment_test_form_payment_element');
+  $form['amount'] = array(
+    '#type' => 'payment_amount',
+    '#currency_code' => 'XXX',
+  );
+  if (arg(1)) {
+    $form['amount']['#minimum_amount'] = (float) arg(1);
+  }
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+
+  return $form;
+}
+
+/**
+ * Implements form submit callback for testing the submission of form elements.
+ */
+function payment_test_form_payment_element(array $form, array &$form_state) {
+  // Redirect, so we can test whether form errors were thrown.
+  $form_state['redirect'] = 'user';
+}
+
+/**
+ * Implements hook_payment_view_alter().
+ */
+function payment_test_payment_view_alter(&$build) {
+  $build['#payment_test_payment_view_alter'] = TRUE;
+}

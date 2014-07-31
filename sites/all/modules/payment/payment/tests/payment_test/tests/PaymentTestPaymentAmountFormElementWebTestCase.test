@@ -1,0 +1,67 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestPaymentAmountFormElementWebTestCase.
+ */
+
+/**
+ * Tests the payment_line_item form element.
+ */
+class PaymentTestPaymentAmountFormElementWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment amount form element',
+      'group' => 'Payment',
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('payment', 'payment_test'));
+  }
+
+  /**
+   * Test validation.
+   */
+  function testValidation() {
+    // Test valid values.
+    $values =  array(
+      'amount' => '49.95',
+    );
+    $this->drupalPost('payment_test-form-element-payment-amount', $values, t('Submit'));
+    $this->assertUrl('user', array(), 'A valid value higher than the default <em>#minimum_value</em> triggers form submission.');
+    $values =  array(
+      'amount' => '50,95',
+    );
+    $this->drupalPost('payment_test-form-element-payment-amount/50', $values, t('Submit'));
+    $this->assertUrl('user', array(), 'A valid value higher than an explicitely configured <em>#minimum_value</em> triggers form submission.');
+
+    // Test illegal characters.
+    $values =  array(
+      'amount' => $this->randomName(2),
+    );
+    $this->drupalPost('payment_test-form-element-payment-amount', $values, t('Submit'));
+    $this->assertText(t('The amount can only consist of a minus sign, decimals and one decimal mark.'), 'Non-numeric characters that are no period, comma, or minus sign throw a validation error.');
+
+    // Test multiple decimal marks.
+    $values =  array(
+      'amount' => '49,.95',
+    );
+    $this->drupalPost('payment_test-form-element-payment-amount', $values, t('Submit'));
+    $this->assertText(t('The amount can only consist of digits, optionally preceded by a minus sign and optionally preceded, separated or succeeded by a decimal separator.'), 'Multiple decimal marks throw a validation error.');
+
+    // Test the minimum value.
+    $values =  array(
+      'amount' => '49.95',
+    );
+    $this->drupalPost('payment_test-form-element-payment-amount/50', $values, t('Submit'));
+    $this->assertText(t('The minimum amount is !amount.', array(
+      '!amount' => payment_amount_human_readable(50, 'XXX'),
+    )), 'An amount below the minimum throws a validation error.');
+  }
+}

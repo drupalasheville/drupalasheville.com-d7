@@ -1,0 +1,63 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestActionHookAndCallbackWebTestCase.
+ */
+
+/**
+ * Tests action hook and callback invocations.
+ */
+class PaymentTestActionHookAndCallbackWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Action hook and callback invocations',
+      'group' => 'Payment',
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('payment_test', 'paymentmethodbasic'));
+  }
+
+  /**
+   * Test whether all action hooks and callbacks are invoked.
+   */
+  function testActionHooksAndCallbacks() {
+    $payment_method = $this->paymentMethodCreate(1, payment_method_controller_load('PaymentMethodBasicController'));
+    $payment = $this->paymentCreate(1, $payment_method);
+
+    // Test hook_payment_validate(), hook_payment_pre_execute(),
+    // hook_payment_status_change(), and the finish callback.
+    $validation = FALSE;
+    try {
+      $payment->payment_test_payment_validate = TRUE;
+      $payment_method->validate($payment);
+    }
+    catch (PaymentValidationException $e) {
+      $validation = $e->getMessage() == 'payment_test';
+    }
+    unset($payment->payment_test_payment_validate);
+    $this->assertTrue($validation, 'hook_payment_validate() is invoked when validating a payment before execution.');
+    $payment->execute();
+    $this->assertTrue(isset($payment->payment_test_payment_pre_execute), 'hook_payment_pre_execute() is invoked before executing a payment.');
+    $this->assertTrue(isset($payment->payment_test_payment_status_change), 'hook_payment_status_change() is invoked before executing a payment.');
+    $this->assertTrue(isset($payment->payment_test_finish_callback), 'The finish callback is invoked after executing a payment.');
+    $this->assertTrue(isset($payment->payment_test_payment_pre_finish), 'hook_payment_pre_finish() is invoked when finishing a payment.');
+
+    // Test hook_payment_form_alter().
+    $form_state = form_state_defaults();
+    $form = payment_form_embedded($form_state, $payment);
+    $this->assertTrue(isset($form['elements']['payment_test']), 'Form elements can be altered through hook_payment_form_alter().');
+    $this->assertTrue(in_array('payment_test', $form['submit']), 'Submit callbacks can be altered through hook_payment_form_alter().');
+
+    // Tests hook_payment_view_alter().
+    $build = entity_view('payment', array($payment));
+    $this->assertTrue(isset($build['payment'][$payment->pid]['#payment_test_payment_view_alter']));
+  }
+}

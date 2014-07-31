@@ -1,0 +1,131 @@
+<?php
+
+/*
+ * Implements hook_install().
+ */
+function commerce_coupon_usage_install() {
+  _commerce_coupon_install_inline_conditions_field();
+}
+
+/*
+ * Implements hook_schema().
+ */
+function commerce_coupon_usage_schema() {
+  $schema['commerce_coupon_usage_transaction'] = array(
+    'description' => 'Table for keeping track of coupon usage',
+    'fields' => array(
+      'transaction_id' => array(
+        'description' => 'The primary identifier for this record.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'coupon_id' => array(
+        'description' => 'The primary identifier for a coupon.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'order_id' => array(
+        'description' => 'The primary identifier for an order.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'The primary identifier for the user to whom this transaction is related.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0
+      ),
+      'date' => array(
+        'description' => 'The Unix timestamp when the usage record was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,          
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('transaction_id'),
+    'foreign keys' => array(
+      'uid' => array(
+        'table' => 'users',
+        'column' => array('uid' => 'uid')
+      ),
+      'coupon_id' => array(
+        'table' => 'commerce_coupon',
+        'column' => array('coupon_id' => 'coupon_id')
+      ),
+      'order_id' => array(
+        'table' => 'commerce_order',
+        'column' => array('order_id' => 'order_id')
+      ),           
+    ),      
+  );
+  
+  return $schema;
+}
+
+/**
+ * Install commerce_coupon_usage_transaction table.
+ */
+function commerce_coupon_usage_update_7001() {
+  // Install the usage transaction table.
+  $table = drupal_get_schema_unprocessed('commerce_coupon_usage', 'commerce_coupon_usage_transaction');
+  if (!db_table_exists('commerce_coupon_usage_transaction')) {
+    db_create_table('commerce_coupon_usage_transaction', $table);
+  }
+
+  // Rebuild schema.
+  drupal_get_complete_schema(TRUE);
+}
+
+/**
+ * Add usage records for legacy orders with coupons.
+ */
+function commerce_coupon_usage_update_7002(&$sandbox) {  
+  $statuses = array_merge(commerce_order_statuses(array('state' => 'completed')), commerce_order_statuses(array('state' => 'pending')));
+  
+  $query = new EntityFieldQuery;
+  $query
+    ->entityCondition('entity_type', 'commerce_order')
+    ->fieldCondition('commerce_coupons', 'target_id', 'NULL', '!=')
+    ->propertyCondition('status', array_keys($statuses));
+  
+  if (!isset($sandbox['progress'])) {    
+    $count_query = clone $query;
+    $sandbox['progress'] = 0;
+    $sandbox['current_id'] = 0;
+    $sandbox['max'] = $count_query->count()->execute();
+  }
+  
+  $result = $query
+    ->propertyCondition('order_id', $sandbox['current_id'], '>')
+    ->range(0, 4)
+    ->propertyOrderBy('order_id', 'ASC')
+    ->execute();
+  
+  if (!empty($result['commerce_order'])) {
+    // Ensure that the controller file gets loaded.
+    module_load_include('inc', 'commerce_coupon_usage', 'includes/commerce_coupon_usage.controller');    
+    
+    $order_ids = array_keys($result['commerce_order']);
+    $orders = commerce_order_load_multiple($order_ids);
+    
+    foreach ($orders as $order) {
+      commerce_coupon_usage_record_usage($order);
+    }
+
+    $sandbox['progress']++;
+    $sandbox['current_id'] = $order->order_id;
+    if (function_exists('drush_print')) {
+      drush_print(t('Processed @n orders', array('@n' => count($order_ids))));
+    }
+    
+    $sandbox['#finished'] = $sandbox['progress'] / $sandbox['max'];
+  }
+  else {
+    $sandbox['#finished'] = 1;
+  }
+}

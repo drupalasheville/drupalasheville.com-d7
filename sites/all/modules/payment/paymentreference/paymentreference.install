@@ -1,0 +1,92 @@
+<?php
+
+/**
+ * @file
+ * Installation and uninstallation functions.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function paymentreference_schema() {
+  $schema['paymentreference'] = array(
+    'fields' => array(
+      'bundle' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'entity_type' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'field_name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'pid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('pid'),
+    'foreign keys' => array(
+      'pid' => array(
+        'table' => 'payment',
+        'columns' => array(
+          'pid' => 'pid',
+        ),
+      ),
+    ),
+    'indexes' => array(
+      'instance' => array('bundle', 'entity_type', 'field_name'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_field_schema().
+ */
+function paymentreference_field_schema($field) {
+  if ($field['type'] == 'paymentreference') {
+    $schema = array(
+      'columns' => array(
+        'pid' => array(
+          'type' => 'int',
+          'size' => 'big',
+          'not null' => TRUE,
+        ),
+      ),
+      'foreign_keys' => array(
+        'pid' => array(
+          'table' => 'payment',
+          'columns' => array(
+            'pid' => 'pid',
+          ),
+        ),
+      ),
+      'indexes' => array(
+        'pid' => array('pid'),
+      ),
+    );
+  }
+
+  return $schema;
+}
+
+/**
+ * Deletes orphaned items from {paymentreference}.
+ */
+function paymentreference_update_7100(&$sandbox) {
+  $pids = db_query("SELECT pr.pid FROM {paymentreference} pr LEFT JOIN {payment} p ON pr.pid = p.pid WHERE p.pid IS NULL")->fetchCol();
+  if ($pids) {
+    db_delete('paymentreference')
+      ->condition('pid', $pids)
+      ->execute();
+  }
+}

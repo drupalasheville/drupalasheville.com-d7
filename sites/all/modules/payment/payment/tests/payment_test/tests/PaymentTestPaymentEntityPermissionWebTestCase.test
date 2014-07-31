@@ -1,0 +1,55 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestPaymentEntityPermissionWebTestCase.
+ */
+
+/**
+ * Tests payment entity permissions.
+ */
+class PaymentTestPaymentEntityPermissionWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment permissions',
+      'group' => 'Payment',
+      'dependencies' => array('payment'),
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('payment'));
+  }
+
+  function testPaymentEntityPermissions() {
+    $payment_1 = $this->paymentCreate(1);
+    $payment_2 = $this->paymentCreate(2);
+
+    // Test creating a payment.
+    $this->assertEntityPermission(NULL, 'Payment', 'payment_access', 'create', array(), array(
+      'anonymous' => TRUE,
+      'authenticated_without_permissions' => TRUE,
+    ));
+
+    // Test deleting, updating and viewing a payment.
+    $operations = array('delete', 'update', 'view');
+    foreach ($operations as $operation) {
+      // Test a payment that belongs to user 1.
+      $this->assertEntityPermission($payment_1, 'Payment', 'payment_access', $operation, array("payment.payment.$operation.any"));
+      $this->assertEntityPermission($payment_1, 'Payment', 'payment_access', $operation, array("payment.payment.$operation.own"), array(
+        'authenticated_with_permissions' => FALSE,
+      ));
+      $this->assertEntityPermission($payment_1, 'Payment', 'payment_access', $operation);
+
+      // Test a payment that belongs to user 2.
+      $this->assertEntityPermission($payment_2, 'Payment', 'payment_access', $operation, array("payment.payment.$operation.any"));
+      $this->assertEntityPermission($payment_2, 'Payment', 'payment_access', $operation, array("payment.payment.$operation.own"));
+      $this->assertEntityPermission($payment_2, 'Payment', 'payment_access', $operation);
+    }
+  }
+}

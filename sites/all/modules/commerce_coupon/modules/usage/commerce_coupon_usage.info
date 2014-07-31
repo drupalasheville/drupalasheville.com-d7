@@ -1,0 +1,18 @@
+name = "Commerce Coupon Usage"
+description = "Enables coupon usage limits"
+project = "Commerce"
+core = 7.x
+dependencies[] = commerce_coupon
+dependencies[] = inline_conditions
+
+files[] = includes/views/handlers/commerce_coupon_usage_views_handler_area_usage_summary.inc
+files[] = includes/views/handlers/commerce_coupon_usage_views_handler_field_usage.inc
+files[] = includes/views/handlers/commerce_coupon_usage_views_handler_field_remove.inc
+
+files[] = includes/commerce_coupon_usage.controller.inc
+; Information added by Drupal.org packaging script on 2014-07-18
+version = "7.x-2.0-beta3+3-dev"
+core = "7.x"
+project = "commerce_coupon"
+datestamp = "1405719533"
+

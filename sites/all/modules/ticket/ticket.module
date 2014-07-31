@@ -1,0 +1,811 @@
+<?php
+/**
+ * @file
+ * Ticket module file.
+ */
+
+// Include the field definition.
+require_once DRUPAL_ROOT . '/' . drupal_get_path('module', 'ticket') . '/includes/ticket.field.inc';
+
+/**
+ * Implements hook_views_api().
+ */
+function ticket_views_api() {
+  return array(
+    'version' => '3.0',
+    'path' => drupal_get_path('module', 'ticket') . '/views',
+  );
+}
+
+/**
+ * Implements hook_theme().
+ */
+function ticket_theme($existing, $type, $theme, $path) {
+  return array(
+    'ticket_type' => array(
+      'render element' => 'elements',
+      'template' => 'ticket-type',
+      'path' => drupal_get_path('module', 'ticket') . '/theme',
+    ),
+    'ticket_user_tickets' => array(
+      'variables' => array(
+        'title' => NULL,
+        'data' => NULL,
+      ),
+      'template' => 'ticket-user-tickets',
+      'path' => drupal_get_path('module', 'ticket') . '/theme',
+    ),
+  );
+}
+
+/**
+ * Implements hook_entity_info().
+ */
+function ticket_entity_info() {
+  // Ticket type entity.
+  $entities['ticket_type'] = array(
+    'label' => t('Ticket type'),
+    'plural label' => t('Ticket types'),
+    'entity class' => 'TicketTypeEntity',
+    'metadata controller class' => 'TicketTypeMetadataController',
+    'controller class' => 'EntityAPIControllerExportable',
+    'label callback' => 'ticket_type_label',
+    'base table' => 'ticket_type',
+    'revision table' => 'ticket_type_revision',
+    'fieldable' => TRUE,
+    'bundle of' => 'ticket_registration',
+    'entity keys' => array(
+      'id' => 'ttid',
+      'revision' => 'revision_id',
+    ),
+    'module' => 'ticket',
+    'view modes' => array(
+      // The default view mode shows the label, description and a link
+      // to register.
+      'default' => array(
+        'label' => t('Default'),
+        'custom settings' => FALSE,
+      ),
+    ),
+    'access callback' => 'ticket_type_access',
+    'bundles' => array(
+      'ticket_type' => array(
+        'label' => t('Ticket type'),
+        'admin' => array(
+          'path' => 'admin/structure/ticket_type',
+          'real path' => 'admin/structure/ticket_type',
+          'bundle argument' => 2,
+          'access arguments' => array('administer ticket'),
+        ),
+      ),
+    ),
+    'admin ui' => array(
+      'path' => 'tickets',
+      'controller class' => 'TicketTypeUIController',
+      'menu wildcard' => '%ticket_type',
+    ),
+    'entity cache' => module_exists('entitycache'),
+  );
+
+  // Ticket registration entity.
+  $entities['ticket_registration'] = array(
+    'label' => t('Ticket registration'),
+    'plural label' => t('Ticket registrations'),
+    'label callback' => 'ticket_registration_label',
+    'entity class' => 'TicketRegistration',
+    'metadata controller class' => 'TicketRegistrationMetadataController',
+    'controller class' => 'TicketRegistrationController',
+    'base table' => 'ticket_registration',
+    'revision table' => 'ticket_registration_revision',
+    'fieldable' => TRUE,
+    'entity keys' => array(
+      'id' => 'trid',
+      'revision' => 'revision_id',
+      'bundle' => 'bundle',
+    ),
+    'bundle keys' => array(
+      'bundle' => 'bundle',
+    ),
+    'module' => 'ticket',
+    'view modes' => array(
+      'default' => array(
+        'label' => t('Default'),
+        'custom settings' => FALSE,
+      ),
+    ),
+    'access callback' => 'ticket_registration_access',
+    'admin ui' => array(
+      'path' => 'ticket_registration',
+      'file path' => drupal_get_path('module', 'ticket') . '/includes',
+      'file' => 'ticket_registration.admin.inc',
+      'controller class' => 'TicketRegistrationUIController',
+      'menu wildcard' => '%ticket_registration',
+    ),
+    'entity cache' => module_exists('entitycache'),
+  );
+
+  return $entities;
+}
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function ticket_entity_info_alter(&$entity_info) {
+  // Add bundles for ticket types.
+  foreach (ticket_get_ticket_types(TRUE) as $ticket_type) {
+    $entity_info['ticket_registration']['bundles'][$ticket_type->ttid] = array(
+      'label' => entity_label('ticket_type', $ticket_type),
+      'admin' => array(
+        'path' => 'ticket_registration/manage/%',
+        'real path' => 'ticket_registration/manage/' . $ticket_type->ttid,
+        'bundle argument' => 2,
+        // If a user has access to update a ticket type, they should have
+        // access to control the registration form.
+        'access callback' => 'ticket_type_access',
+        'access arguments' => array('update', $ticket_type),
+      ),
+    );
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function ticket_menu() {
+  $items = array();
+
+  // Add an admin page. This helps give the ticket type entity field ui
+  // a place to attach.
+  $items['admin/structure/ticket_type'] = array(
+    'title' => 'Ticket settings',
+    'description' => 'Manage sitewide ticket and ticket type settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ticket_admin_form'),
+    'access arguments' => array('administer ticket'),
+    'file path' => drupal_get_path('module', 'ticket') . '/includes',
+    'file' => 'ticket_type.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  // Add a generic place to build registration forms.
+  // Should be entity/entity_id/register
+  $items['ticket/register'] = array(
+    'title' => 'Register',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ticket_register_form'),
+    'access callback' => 'ticket_register_access',
+    'file path' => drupal_get_path('module', 'ticket') . '/includes',
+    'file' => 'ticket_registration.admin.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  // Ticket type field remove ajax handler.
+  $items['ticket_type/ajax'] = array(
+    'title' => 'Remove item callback',
+    'page callback' => 'ticket_type_remove_js',
+    'delivery callback' => 'ajax_deliver',
+    'access callback' => TRUE,
+    'theme callback' => 'ajax_base_page_theme',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['user/%user/tickets'] = array(
+    'title' => 'Tickets',
+    'page callback' => 'ticket_registration_user_tickets',
+    'page arguments' => array(1),
+    'access callback' => 'user_edit_access',
+    'access arguments' => array(1),
+    'file path' => drupal_get_path('module', 'ticket') . '/includes',
+    'file' => 'ticket_registration.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  return $items;
+}
+
+/**
+ * Ticket type loader.
+ */
+function ticket_type_load($ttid) {
+  return entity_load_single('ticket_type', $ttid);
+}
+
+/**
+ * Ticket type label callback.
+ */
+function ticket_type_label($ticket_type, $entity_type = 'ticket_type') {
+  // TODO: Not sure where this is getting called with the wrong args.
+  if (!is_object($ticket_type) || get_class($ticket_type) != 'TicketTypeEntity') {
+    return;
+  }
+
+  $host = $ticket_type->host();
+  $host_label = entity_label($ticket_type->entity_type, $host);
+
+  $label = field_get_items('ticket_type', $ticket_type, 'ticket_type_label');
+
+  return t('@host @ticket', array(
+    '@host' => $host_label,
+    '@ticket' => $label[0]['value'],
+  ));
+}
+
+/**
+ * Ticket registration title callback.
+ */
+function ticket_registration_label($ticket_registration, $entity_type = 'ticket_registration') {
+  $ticket_type = $ticket_registration->ticket_type();
+
+  return t('@ticket registration', array(
+    '@ticket' => ticket_type_label($ticket_type),
+  ));
+}
+
+/**
+ * Implements hook_permission().
+ */
+function ticket_permission() {
+  return array(
+    'administer ticket' => array(
+      'title' => t('Administer ticket'),
+      'description' => t('Manage ticket module settings and configurations.'),
+      'restrict access' => TRUE,
+    ),
+    'view all ticket registrations' => array(
+      'title' => t('View all registrations'),
+      'description' => t('View all ticket registrations.'),
+    ),
+    'edit all ticket registrations' => array(
+      'title' => t('Edit all registrations'),
+      'description' => t('Edit all ticket registrations.'),
+      'restrict access' => TRUE,
+    ),
+  );
+}
+
+/**
+ * Ticket type overview page access callback.
+ */
+function ticket_type_overview_access($entity_type, $entity_id, $op) {
+  $entity = entity_load_single($entity_type, $entity_id);
+  list(, , $bundle) = entity_extract_ids($entity_type, $entity);
+  $fields_info = field_info_instances($entity_type, $bundle);
+  foreach ($fields_info as $field_name => $value) {
+    if ($field_info = field_info_field($field_name)) {
+      if ($field_info['type'] == 'ticket_type') {
+        return entity_access($op, $entity_type);
+      }
+    }
+  }
+  return FALSE;
+}
+/**
+ * Ticket type entity access callback.
+ */
+function ticket_type_access($op, $item = NULL, $account = NULL) {
+  if (empty($item)) {
+    return FALSE;
+  }
+
+  // Get an object if item is an int.
+  if (is_numeric($item)) {
+    $item = ticket_type_load($item);
+  }
+
+  // Sanity check.
+  if (!isset($item->ttid)) {
+    return FALSE;
+  }
+
+  // Get the host entity. Sometimes $item isn't a strict TicketTypeEntity
+  // class, so we can't use the host() method.
+  $entity = entity_load_single($item->entity_type, $item->entity_id);
+
+  // If the account has access to the host, check for field access.
+  if (entity_access($op, $item->entity_type, $entity, $account)) {
+    // Field ops are different from entity ops.
+    if (in_array($op, array('update', 'create', 'delete'))) {
+      $op = 'edit';
+    }
+    // Get the field info.
+    $field = field_info_field($item->field_name);
+    return field_access($op, $field, $item->entity_type, $entity, $account);
+  }
+
+  return FALSE;
+}
+
+/**
+ * Ticket registration entity access callback.
+ */
+function ticket_registration_access($op, $item = NULL, $account = NULL) {
+  if (empty($item)) {
+    return FALSE;
+  }
+
+  // Get an object if item is an int.
+  if (is_numeric($item)) {
+    $item = ticket_registration_load($item);
+  }
+
+  // Get the user account if null.
+  if (!$account) {
+    $account = $GLOBALS['user'];
+  }
+
+  // The registration owner should always have access.
+  if (isset($item->author_uid) && $item->author_uid == $account->uid) {
+    return TRUE;
+  }
+
+  // If user has access to globally view.
+  if ($op == 'view' && user_access('view all ticket registrations', $account)) {
+    return TRUE;
+  }
+
+  // If user has access to globally edit.
+  if (in_array($op, array('update', 'delete')) && user_access('edit all ticket registrations', $account)) {
+    return TRUE;
+  }
+
+  // Cascade back to the ticket type - anyone who can admin the type
+  // has access to registratons.
+  return ticket_type_access('update', $item->ticket_type());
+}
+
+/**
+ * Register page access callback.
+ */
+function ticket_register_access() {
+  if (!isset($_SESSION['ticket']['build_forms']) || empty($_SESSION['ticket']['build_forms'])) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Get the number of registrations for a given type.
+ */
+function ticket_type_registration_count($ttid) {
+  $query = new EntityFieldQuery();
+  return $query->entityCondition('entity_type', 'ticket_registration')
+    ->propertyCondition('bundle', $ttid)
+    ->count()
+    ->execute();
+}
+
+/**
+ * Function to determine ticket type availability.
+ */
+function ticket_type_available($ticket_type) {
+  $ttid = $ticket_type->ttid;
+  // Static cache the availability.
+  $available = &drupal_static(__FUNCTION__);
+
+  if (!isset($available[$ttid])) {
+    $available[$ttid] = TRUE;
+
+    // Enabled check.
+    if (!$ticket_type->status) {
+      $available[$ttid] = FALSE;
+    }
+
+    // Start date check.
+    if ($available[$ttid]) {
+      $tt_time = field_get_items('ticket_type', $ticket_type, 'ticket_type_availability');
+      // Start time is in the future. Comparision in UTC.
+      if ($tt_time[0]['value'] > REQUEST_TIME) {
+        $available[$ttid] = FALSE;
+      }
+
+      // Stop date check.
+      if ($available[$ttid] && $tt_time[0]['value2'] > $tt_time[0]['value']) {
+        // Stop time is in the past.
+        if ($tt_time[0]['value2'] < REQUEST_TIME) {
+          $available[$ttid] = FALSE;
+        }
+      }
+    }
+
+    // Quantity check.
+    if ($available[$ttid] && !empty($ticket_type->ticket_type_quantity)) {
+      $quantity = field_get_items('ticket_type', $ticket_type, 'ticket_type_quantity');
+      if (ticket_type_registration_count($ttid) >= $quantity[0]['value']) {
+        $available[$ttid] = FALSE;
+      }
+    }
+
+    if ($available[$ttid]) {
+      // Allow other modules to influence availability (e.g. they may provide
+      // a new ticket type field).
+      foreach (module_implements('ticket_type_available') as $module) {
+        $function = $module . '_ticket_type_available';
+        // Assume hook_ticket_type_available default return is available.
+        if ($function($ticket_type) === FALSE) {
+          $available[$ttid] = FALSE;
+          break;
+        }
+      }
+    }
+
+  }
+
+  return $available[$ttid];
+}
+
+/**
+ * Ticket Types callback.
+ *
+ * Returns an array of ticket types, Note the cache stores an array
+ * of enabled and all ticket types. It also only stores a pseudo "entity".
+ * This "entity" only stores properties (not fields) and has no methods.
+ * We do this because it's fast and nearly free to get the properties, but
+ * it's expensive to load the fully fielded entities.
+ */
+function ticket_get_ticket_types($show_disabled = FALSE, $reset = FALSE) {
+  $cache = cache_get('ticket:ticket_types');
+  if (isset($cache->data) && !empty($cache->data) && !$reset) {
+    $ticket_types = $cache->data;
+  }
+  else {
+    $ticket_types = array();
+  }
+
+  if (!isset($ticket_types[(int) $show_disabled])) {
+    // EFQ can't get entity properties without doing an entity_load.
+    $query = db_select('ticket_type', 'tt')->fields('tt');
+
+    if (!$show_disabled) {
+      $query->condition('status', 1);
+    }
+
+    $result = $query->execute();
+    $ticket_types[(int) $show_disabled] = array();
+    foreach ($result as $record) {
+      $ticket_types[(int) $show_disabled][$record->ttid] = $record;
+    }
+
+    cache_set('ticket:ticket_types', $ticket_types);
+  }
+
+  return $ticket_types[(int) $show_disabled];
+}
+
+/**
+ * Ticket type names helper function.
+ */
+function ticket_get_ticket_type_names($ttid = NULL) {
+  $ticket_types = ticket_get_ticket_types(TRUE);
+  $field = field_info_instance('ticket_type', 'ticket_type_label', 'ticket_type');
+  $options = array('field_id' => $field['field_id']);
+  field_attach_load('ticket_type', $ticket_types, FIELD_LOAD_CURRENT, $options);
+
+  $ticket_type_names = array();
+  foreach ($ticket_types as $ticket_type) {
+    $label = field_get_items('ticket_type', $ticket_type, 'ticket_type_label');
+    $ticket_type_names[$ticket_type->ttid] = $label[0]['value'];
+  }
+
+  if ($ttid && isset($ticket_type_names[$ttid])) {
+    return $ticket_type_names[$ttid];
+  }
+  return $ticket_type_names;
+}
+
+/**
+ * Ticket type host entity helper function.
+ */
+function ticket_get_entity_ticket_types($entity_type, $entity, $show_disabled = FALSE, $reset = FALSE) {
+  list($entity_id, $revision_id, $bundle) = entity_extract_ids($entity_type, $entity);
+  $cid = 'ticket:' . $entity_type . ':' . $entity_id;
+  $cache = cache_get($cid);
+  if (isset($cache->data) && !empty($cache->data) && !$reset) {
+    $ticket_types = $cache->data;
+  }
+  else {
+    $ticket_types = array();
+  }
+
+  if (empty($ticket_types)) {
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'ticket_type')
+      ->propertyCondition('entity_type', $entity_type)
+      ->propertyCondition('entity_id', $entity_id);
+    if (!$show_disabled) {
+      $query->propertyCondition('status', 1);
+    }
+
+    $result = $query->execute();
+    if (!empty($result['ticket_type'])) {
+      $ticket_types = entity_load('ticket_type', array_keys($result['ticket_type']));
+      cache_set($cid, $ticket_types);
+    }
+  }
+
+  return $ticket_types;
+}
+
+/**
+ * Entity uri patterns.
+ *
+ * Unforunately Drupal doesn't have a callback to return uri patterns,
+ * so we'll just hard code core entities here and provide a hook for
+ * any additions.
+ */
+function ticket_get_entity_uri_pattern($type = NULL) {
+  $uris = &drupal_static(__FUNCTION__, array());
+
+  if (empty($uris)) {
+    $uris = array(
+      'node' => 'node/%',
+      'user' => 'user/%',
+      'taxonomy_term' => 'taxonomy/term/%',
+      'comment' => 'comment/%',
+    );
+
+    // Allow other modules to add new types.
+    drupal_alter('ticket_entity_uri_pattern', $uris);
+  }
+
+  if (isset($uris[$type])) {
+    return $uris[$type];
+  }
+  else {
+    return $uris;
+  }
+}
+
+/**
+ * Quickly get the entity admin url.
+ */
+function ticket_get_admin_path($type) {
+  $info = entity_get_info($type);
+  return $info['admin ui']['path'];
+}
+
+/**
+ * Make the event dashboard be an admin path.
+ */
+function ticket_admin_paths() {
+  $paths = array(
+    '*/*/tickets' => TRUE,
+    '*/*/tickets/*' => TRUE,
+  );
+  return $paths;
+}
+
+/**
+ * Helper function to perform cleanup when adding or deleting a ticket type.
+ */
+function ticket_flush_caches($entity_type = NULL, $entity_id = '') {
+  // Saving ticket types changes available bundles for ticket
+  // registrations, so we need to clear the entity info cache.
+  entity_info_cache_clear();
+  cache_clear_all('ticket:ticket_types', 'cache');
+  if ($entity_type) {
+    cache_clear_all('ticket:' . $entity_type . ':' . $entity_id, 'cache');
+  }
+  // Clear the menu so this item can generate an admin page.
+  // TODO: This could probably be smarter and only happen on
+  // a new item save. Currently called on ticket_type->save().
+  menu_rebuild();
+}
+
+/**
+ * List entity types and bundles that have attached ticket types.
+ */
+function ticket_get_entities() {
+  $entities = &drupal_static(__FUNCTION__, array());
+
+  if (!empty($entities)) {
+    return $entities;
+  }
+  foreach (field_info_field_map() as $field => $data) {
+    if ($data['type'] == 'ticket_type') {
+      foreach ($data['bundles'] as $entity => $bundles) {
+        if (!isset($entities[$entity])) {
+          $entities[$entity] = $bundles;
+        }
+        else {
+          array_merge($entities[$entity], $data['bundles']);
+        }
+      }
+    }
+  }
+  return $entities;
+}
+
+/**
+ * Get the name of the ticket type field.
+ *
+ * @param string $entity_type
+ *   The entity type.
+ * @param string $bundle_name
+ *   The bundle name to be checked.
+ *
+ * @return array
+ *   Array keyed with the field name and the field label as the value.
+ */
+function ticket_get_ticket_type_fields($entity_type, $bundle_name) {
+  $return = &drupal_static(__FUNCTION__, array());
+  $identifier = $entity_type . ':' . $bundle_name;
+  if (isset($return[$identifier])) {
+    return $return[$identifier];
+  }
+  $return[$identifier] = array();
+
+  foreach (field_info_instances($entity_type, $bundle_name) as $field_name => $instance) {
+    if (!ticket_is_ticket_type_field($field_name)) {
+      continue;
+    }
+    $return[$identifier][$field_name] = $instance['label'];
+  }
+  return $return[$identifier];
+}
+
+/**
+ * Return TRUE if field is a ticket type.
+ *
+ * @param string $field_name
+ *   The field name.
+ *
+ * @return bool
+ *   Whether the field is a ticket type.
+ */
+function ticket_is_ticket_type_field($field_name) {
+  $field = field_info_field($field_name);
+  return $field['type'] == 'ticket_type';
+}
+
+/**
+ * Form builder function for the overview form.
+ *
+ * @see EntityDefaultUIController::overviewForm()
+ */
+function ticket_overview_form($form, &$form_state, $entity_type, $entity_id, $host_type) {
+  return entity_ui_controller($entity_type)->overviewForm($form, $form_state, $entity_id, $host_type);
+}
+
+/**
+ * Get all registrations associated with a user.
+ */
+function ticket_get_user_registrations($user, $entity_type = NULL, $entity_id = NULL) {
+  //$entity = entity_load($entity_type, $entity_id);
+
+  // Sorta funky, users are tied to registrations, but the host entity is tied to
+  // the ticket type. We need to do a join, but want to start with the users'
+  // Registrations first.
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'ticket_registration')
+    ->propertyCondition('user_uid', $user->uid);
+  $user_registrations = $query->execute();
+
+  // Need to make a query for all the bundles that are applicable to these
+  // registrations if the host entity is passed in.
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'ticket_type');
+
+  if (!empty($entity_type) && !empty($entity_id)) {
+    $query->propertyCondition('entity_type', $entity_type)
+      ->propertyCondition('entity_id', $entity_id);
+  }
+  $bundles = $query->execute();
+
+  $registrations = array();
+  foreach ($user_registrations['ticket_registration'] as $registration) {
+    if (in_array((int)$registration->bundle, array_keys($bundles['ticket_type']))) {
+      $registrations[] = ticket_registration_load($registration->trid);
+    }
+  }
+  return $registrations;
+}
+
+
+/**
+ * Required by ticket_registrationMetadataController for Views integration.
+ *
+ * @param $entity
+ * @param array $options
+ * @param $name
+ * @param $type
+ *
+ * @return EntityMetadataWrapper
+ */
+function ticket_registration_get_properties($entity, array $options, $name, $type) {
+  switch ($name) {
+    case 'entity_type':
+      return $entity->host()->entity_type;
+
+    case 'entity_id':
+      return $entity->host()->entity_id;
+
+    case 'entity':
+      return $entity->host();
+
+    case 'user':
+      return $entity->attendee();
+
+    case 'author':
+      return $entity->registrant();
+
+  }
+}
+
+/**
+ * Required by ticket_typeMetadataController for Views integration.
+ *
+ * @param $entity
+ * @param array $options
+ * @param $name
+ * @param $type
+ *
+ * @return EntityMetadataWrapper
+ */
+function ticket_type_get_properties($entity, array $options, $name, $type) {
+  switch ($name) {
+    case 'entity':
+      return $entity->host();
+  }
+}
+
+/**
+ * Loads a ticket_registration by ID.
+ */
+function ticket_registration_load($trid) {
+  if (empty($trid)) {
+    return FALSE;
+  }
+
+  $ticket_registrations = ticket_registration_load_multiple(array($trid), array());
+  return $ticket_registrations ? reset($ticket_registrations) : FALSE;
+}
+
+/**
+ * Loads multiple ticket_registrations by ID or based on a set of matching conditions.
+ *
+ * @see entity_load()
+ *
+ * @param $ticket_registration_ids
+ * @param $conditions
+ *   An array of conditions on the {ticket_registration} table in the form
+ *     'field' => $value.
+ * @param $reset
+ *   Whether to reset the internal ticket_registration loading cache.
+ *
+ * @return
+ *   An array of ticket_registration objects indexed by ticket_registration_id.
+ */
+function ticket_registration_load_multiple($ticket_registration_ids = array(), $conditions = array(), $reset = FALSE) {
+  if (empty($ticket_registration_ids) && empty($conditions)) {
+    return array();
+  }
+
+  return entity_load('ticket_registration', $ticket_registration_ids, $conditions, $reset);
+}
+
+/**
+ * Deletes multiple ticket_registrations by ID.
+ *
+ * @param $ticket_registration_ids
+ *   An array of ticket_registration IDs to delete.
+ *
+ * @return
+ *   TRUE on success, FALSE otherwise.
+ */
+function ticket_registration_delete_multiple($ticket_registration_ids) {
+  return entity_get_controller('ticket_registration')->delete($ticket_registration_ids);
+}
+
+/**
+ * Saves a ticket_registration.
+ *
+ * @param $ticket_registration
+ *   The full ticket_registration object to save.
+ *
+ * @return
+ *   If the record insert or update failed, returns FALSE. If it succeeded,
+ *   returns SAVED_NEW or SAVED_UPDATED, depending on the operation performed.
+ */
+function ticket_registration_save(TicketRegistration $ticket_registration) {
+  return $ticket_registration->save();
+}

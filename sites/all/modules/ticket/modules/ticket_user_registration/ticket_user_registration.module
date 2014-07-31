@@ -1,0 +1,344 @@
+<?php
+/**
+ * @file
+ * Ticket user registration module.
+ */
+
+/**
+ * Implements hook_views_api().
+ */
+function ticket_user_registration_views_api() {
+  return array(
+    'version' => '3.0',
+    'path' => drupal_get_path('module', 'ticket_user_registration') . '/views',
+  );
+}
+
+/**
+ * Impleents hook_ticket_user_registrations().
+ */
+function ticket_user_registration_ticket_user_registrations($account) {
+  $view = views_get_view('ticket_attendee');
+  $display = 'block';
+  $user = $account->uid == $GLOBALS['user']->uid ? t('you') : $account->name;
+
+  return theme('ticket_user_tickets', array(
+    'title' => t('Tickets registered for @user', array('@user' => $user)),
+    'data' => $view->preview($display, array($account->uid)),
+  ));
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Adds the user registration to the ticket registration form(s).
+ */
+function ticket_user_registration_form_ticket_register_form_alter(&$form, &$form_state) {
+  global $user;
+  /* Define the user registration fields for the default registrant */
+  $user_registration_added = TRUE;
+
+  if (isset($user->uid) && $user->uid > 0) {
+    $form['#user'] = user_load($user->uid);
+    $form['#user_category'] = 'account';
+  }
+  else {
+    $form['#user'] = drupal_anonymous_user();
+    $form['#user_category'] = 'register';
+  }
+
+  $parent_entity = array();
+  foreach ($form as $field_name => $element) {
+    if (preg_match('/^ticket_registration:new_(\d+)/', $field_name, $matches)) {
+      $parent_entity = $form[$field_name]['#entity']->ticket_type();
+      $user_registration_added = TRUE;
+
+      $form[$field_name]['#description'] = t('Enter ticket specific details below.');
+      $form[$field_name]['ticket_user_registration_email:' . $matches[1][0]] = array(
+        '#type' => 'textfield',
+        '#title' => t('Registered e-mail address'),
+        '#description' => t('Enter the e-mail address of the person who will use this ticket. The e-mail address will be used to create an account for the ticketholder.'),
+        '#maxlength' => EMAIL_MAX_LENGTH,
+        '#required' => TRUE,
+        '#element_validate' => array('ticket_user_registration_email_validate'),
+        '#weight' => -1000,
+      );
+    }
+  }
+  $return_url = $parent_entity->entity_type . '/' . $parent_entity->entity_id;
+  $form['ticket_registrant'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Ticket Registrant',
+    '#description' => $form['#user_category'] == 'account' ? t('"Hello %email. Not you? !signout', array('%email' => $form['#user']->mail, '!signout' => l(t('Start over'), 'user/logout', array('query' => array('destination' => $return_url))))) : t('Have an account already? !signin', array('!signin' => l(t('Sign-in'), 'user/login', array('query' => array('destination' => $return_url))))),
+    '#weight' => -1000,
+  );
+  $form['ticket_registrant']['ticket_user_registrant_email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Registrant e-mail address'),
+    '#description' => t('Enter the e-mail address of the person who manages this order. The e-mail address will be used to create an account if one does not exist already.'),
+    '#maxlength' => EMAIL_MAX_LENGTH,
+    '#required' => TRUE,
+    '#element_validate' => array('ticket_user_registration_email_validate'),
+    '#weight' => -1000,
+    '#default_value' => isset($form['#user']->mail) ? $form['#user']->mail : '',
+    '#disabled' => $form['#user']->uid,
+  );
+
+  $form['#attached']['library'][] = array('system', 'jquery.cookie');
+  // Todo: Make it possible to copy data from the registrant to the 1st ticket.
+  $form['#attached']['js'][] = drupal_get_path('module', 'ticket_user_registration') . '/ticket_user_registration.js';
+
+  $form['#attributes']['class'][] = 'user-info-from-cookie';
+  // Add any profile field values.
+  // Attach field widgets, and hide the ones where the 'user_register_form'
+  // setting is not on.
+  $langcode = entity_language('user', $form['#user']);
+  field_attach_form('user', $form['#user'], $form, $form_state, $langcode);
+  foreach (field_info_instances('user', 'user') as $field_name => $instance) {
+    if (empty($instance['settings']['user_register_form'])) {
+      $form[$field_name]['#access'] = FALSE;
+    }
+    $form['ticket_registrant'][$field_name] = $form[$field_name];
+    unset($form[$field_name]);
+  }
+
+  // If we've added any email fields, add the submit handler.
+  if ($user_registration_added) {
+    array_unshift($form['#submit'], 'ticket_user_registration_form_submit');
+  }
+  $form['#validate'][] = 'ticket_user_registration_validate';
+  // Add the final user registration form submit handler.
+}
+
+/**
+ * Validation function for the user registration form.
+ */
+function ticket_user_registration_validate($form, &$form_state) {
+  entity_form_field_validate('user', $form, $form_state);
+}
+
+/**
+ * Email field validation.
+ */
+function ticket_user_registration_email_validate($element, &$form_state) {
+  // Trim whitespace from mail, to prevent confusing 'e-mail not valid'
+  // warnings often caused by cutting and pasting.
+  $mail = trim($element['#value']);
+  form_set_value($element, $mail, $form_state);
+
+  // Validate the e-mail address, and check if it is taken by an existing user.
+  if ($error = user_validate_mail($mail)) {
+    form_error($element, $error);
+  }
+}
+
+/**
+ * Submit handler callback.
+ */
+function ticket_user_registration_form_submit(&$form, &$form_state) {
+  global $user;
+  $author_uid = 0;
+
+  // Potentially create a new user for the registrant of the tickets.
+  if (isset($form['ticket_registrant'])) {
+    $email = $form_state['values']['ticket_registrant']['ticket_user_registrant_email'];
+    if (!$account = user_load_by_mail($email)) {
+      $account = _ticket_user_registration_create_user($email, $form, $form_state, 'ticket_registrant');
+    }
+    // If the user is logged in and wants to change profile information...
+    elseif ($account->uid == $user->uid) {
+      $values['values'] = $form_state['values']['ticket_registrant'];
+      entity_form_submit_build_entity('user', $account, $form, $values);
+      user_save($account);
+    }
+    // Set the registrant user id.
+    $form_state['values']['author_id'] = $account->uid;
+  }
+
+  foreach ($form as $field_name => $element) {
+    unset($account);
+    // Potentially create new users for the tickets.
+    if (preg_match('/^ticket_registration:new_(\d+)/', $field_name, $matches)) {
+      if (isset($element['ticket_user_registration_email:' . $matches[1][0]])) {
+
+        $email = $form_state['values'][$field_name]['ticket_user_registration_email:' . $matches[1][0]];
+        if (!$account = user_load_by_mail($email)) {
+          $account = _ticket_user_registration_create_user($email, $form, $form_state, $field_name);
+        }
+        // Set the registrant user id.
+        $form_state['complete form'][$field_name]['#entity']->user_uid = $account->uid;
+        $form_state['complete form'][$field_name]['#entity']->author_uid = $form_state['values']['author_id'];
+      }
+    }
+  }
+}
+
+function _ticket_user_registration_create_user($email, $form, $form_state, $field_name) {
+  // Create the user.
+  $values = array(
+    'name' => $email,
+    'mail' => $email,
+    'init' => $email,
+    'pass' => user_password(),
+    'status' => 1,
+  );
+  $account = entity_create('user', $values);
+  $values['values'] = $form_state['values'][$field_name];
+  entity_form_submit_build_entity('user', $account, $form, $values);
+
+  user_save($account);
+
+  // @TODO: make an admin ui to set whether email should be sent.
+  if (variable_get('ticket_user_registration_send_email', TRUE)) {
+    $op = 'register_admin_created';
+    _user_mail_notify($op, $account);
+  }
+
+  // Append the first/last name instead of email address to the username
+  if (module_exists('realname')) {
+    realname_update($account);
+    $account->name = $account->realname;
+    user_save($account);
+  }
+
+  return $account;
+}
+
+/**
+ * Implements hook_field_widget_WIDGET_TYPE_form_alter().
+ *
+ * Add a checkbox to ticket type settings to enable/disable user registration.
+ */
+function ticket_user_registration_field_widget_ticket_type_form_alter(&$element, &$form_state, $context) {
+  // Add the element.
+  $element['ticket_user_registration_copy_fields'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Copy user registration fields'),
+    '#description' => t('Create a copy of user profile fields set to display on the user registration form on this ticket type.'),
+    '#default_value' => 0,
+  );
+}
+
+/**
+ * Implements hook_ticket_field_item_presave().
+ *
+ * Save the user registration setting.
+ */
+function ticket_user_registration_ticket_field_item_presave($item) {
+  if (isset($item['ticket_user_registration_copy_fields']) && $item['ticket_user_registration_copy_fields']) {
+    ticket_user_registration_field_copy($item['entity']->ttid, 'registration');
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function ticket_user_registration_form_field_ui_field_overview_form_alter(&$form, &$form_state) {
+  // On ticket registration field management, add a new additional
+  // settings vertical tab.
+  if ($form['#entity_type'] == 'ticket_registration') {
+
+    // Add additional settings vertical tab.
+    if (!isset($form['additional_settings'])) {
+      $form['additional_settings'] = array(
+        '#type' => 'vertical_tabs',
+        '#theme_wrappers' => array('vertical_tabs'),
+        '#prefix' => '<div>',
+        '#suffix' => '</div>',
+        '#tree' => TRUE,
+      );
+      $form['#attached']['js'][] = 'misc/form.js';
+      $form['#attached']['js'][] = 'misc/collapse.js';
+    }
+
+    // Add the copy fields tab.
+    $form['additional_settings']['ticket_user_registration_copy'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Copy user fields'),
+      '#description' => t('Select the user profile fields to copy into this ticket registration type.'),
+      '#collapsible' => TRUE,
+      '#collapsed' => FALSE,
+      '#parents' => array('additional_settings'),
+      '#tree' => TRUE,
+    );
+
+    // Add checkboxes for the user fields. Mark copied fields as disabled.
+    $user_fields = field_info_instances('user', 'user');
+    $bundle_fields = field_info_instances('ticket_registration', $form['#bundle']);
+    foreach ($user_fields as $field_name => $field_instance) {
+      $form['additional_settings']['ticket_user_registration_copy'][$field_name] = array(
+        '#type' => 'checkbox',
+        '#title' => $field_instance['label'],
+      );
+
+      if (isset($bundle_fields[$field_name])) {
+        $form['additional_settings']['ticket_user_registration_copy'][$field_name]['#default_value'] = 1;
+        $form['additional_settings']['ticket_user_registration_copy'][$field_name]['#disabled'] = TRUE;
+      }
+    }
+
+    $form['additional_settings']['ticket_user_registration_copy']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Copy'),
+      '#submit' => array('ticket_user_registration_copy_submit'),
+    );
+
+  }
+}
+
+/**
+ * Field ui field copy submit callback.
+ */
+function ticket_user_registration_copy_submit(&$form, &$form_state) {
+  $copy_fields = array();
+  foreach ($form['additional_settings']['ticket_user_registration_copy'] as $field_name => $field) {
+
+    // Mark any checked fields that were not disabled to be copied.
+    if ($field_name != 'submit' &&
+      (!isset($field['#disabled']) || !$field['#disabled']) &&
+      isset($form_state['values']['additional_settings'][$field_name]) &&
+      $form_state['values']['additional_settings'][$field_name]) {
+
+      $copy_fields[] = $field_name;
+    }
+  }
+
+  if (count($copy_fields)) {
+    ticket_user_registration_field_copy($form['#bundle'], $copy_fields);
+    drupal_set_message(t('Copied user profile fields: %fields', array('%fields' => implode(', ', $copy_fields))));
+  }
+}
+
+/**
+ * User profile field copier.
+ *
+ * @param string $bundle
+ *   The ticket registration bundle to copy field to.
+ * @param array/string $fields
+ *   If an array, a list of fields to copy. Special strings are allowed
+ *   for 'registration' to copy any field marked for display on the user
+ *   registration form.
+ */
+function ticket_user_registration_field_copy($bundle, $fields = 'all') {
+  $user_fields = field_info_instances('user', 'user');
+  $bundle_fields = field_info_instances('ticket_registration', $bundle);
+
+  // Process any fields that don't already exist on the bundle.
+  foreach (array_diff_key($user_fields, $bundle_fields) as $field_name => $field_instance) {
+    // Skip if only running registration fields.
+    if ($fields == 'registration' && !$field_instance['settings']['user_register_form']) {
+      continue;
+    }
+
+    if (is_array($fields) && !in_array($field_name, $fields)) {
+      continue;
+    }
+
+    // Unset specific instance information.
+    unset($field_instance['id']);
+    // Update instance information.
+    $field_instance['entity_type'] = 'ticket_registration';
+    $field_instance['bundle'] = $bundle;
+    field_create_instance($field_instance);
+  }
+}

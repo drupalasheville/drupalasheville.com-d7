@@ -1,0 +1,41 @@
+<?php
+
+/**
+ * Contains class PaymentformTestLineItemFieldWidgetWebTestCase.
+ */
+
+/**
+ * Tests the paymentform_line_item field widget.
+ */
+class PaymentformTestLineItemFieldWidgetWebTestCase extends PaymentformWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment line item field widget',
+      'group' => 'Payment Form Field',
+      'dependencies' => array('node'),
+    );
+  }
+  /**
+   * Overrides parent::setUp().
+   */
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('paymentform_test'));
+  }
+
+  /**
+   * Test the widget's presence.
+   */
+  function testPaymentformLineItemFieldWidgetInputElements() {
+    $web_user = $this->drupalCreateUser(array('create ' . $this->content_type->type . ' content'));
+    $this->drupalLogin($web_user);
+    $this->drupalGet('node/add/page');
+    $elements = $this->xpath('//div[@id="edit-field-paymentform-und-line-item-container-0"]');
+    $this->assertTrue(isset($elements[0]), 'The <em>Payment line item configuration</em> field widget shows the <em>payment_line_item</em> form element.');
+  }
+}

@@ -1,0 +1,240 @@
+<?php
+
+/*
+ * Implements hook_permission().
+ */
+function commerce_coupon_user_permission() {
+  $permissions = array();
+  
+  // Add "own" type permissions for all coupon types.
+  foreach (commerce_coupon_get_types() as $type => $info) {
+    $permissions['redeem received coupons of type ' . $type] = array(
+      'title' => t('Redeem received %type coupon', array('%type' => $info['label']))
+    );
+    $permissions['redeem non user specific coupons of type ' . $type] = array(
+      'title' => t('Redeem non-user-specific %type coupon', array('%type' => $info['label']))
+    );    
+    $permissions['view received coupons of type ' . $type] = array(
+      'title' => t('View received %type coupon', array('%type' => $info['label']))
+    );
+    $permissions['view non user specific coupons of type ' . $type] = array(
+      'title' => t('View non-user-specific %type coupon', array('%type' => $info['label']))
+    );  
+  }
+  return $permissions;
+}
+
+/*
+ * Implements hook_flush_caches().
+ */
+function commerce_coupon_user_flush_caches() {
+  module_load_install('commerce_coupon_user');
+  _commerce_coupon_user_install_helper();
+}
+
+/*
+ * Implements hook_commerce_coupon_access_query_substitute().
+ */
+function commerce_coupon_user_commerce_coupon_access_query_substitute($query, $base_table = NULL, $account = NULL) {
+  global $user;
+
+  // Read the account from the query if available or default to the current user.
+  if (!isset($account) && !$account = $query->getMetaData('account')) {
+    $account = $user;
+  }
+  
+  $tables = &$query->getTables();  
+
+  // Read the base table from the query if available or default to the first
+  // table in the query's tables array.
+  if (!isset($base_table) && !$base_table = $query->getMetaData('base_table')) {
+    // Assume that the base table is the first table if not set. It will result
+    // in an invalid query if the first table is not the table we expect,
+    // forcing the caller to actually properly pass a base table in that case.
+    reset($tables);
+    $base_table = key($tables);
+  }
+
+  // Get the recipient table alias if it is already in the query.
+  foreach ($tables as $alias => $table) {
+    if ($table['table'] == 'field_data_commerce_coupon_recipient') {
+      $recipient_table = $alias;
+      break;
+    }
+  }
+  
+  if (!isset($recipient_table)) {
+    $recipient_table = 'field_data_commerce_coupon_recipient';
+    $join_condition = $recipient_table . '.commerce_coupon_recipient_target_id=:uid AND ' . $recipient_table. '.entity_id=' . $base_table . '.coupon_id';
+    $query->leftJoin($recipient_table, $recipient_table, $join_condition, array(':uid' => $account->uid,));
+  }
+
+  // Do not apply any conditions for users with administrative view permissions.
+  if (user_access('administer commerce_coupon entities', $account)
+    || user_access('view any commerce_coupon entity', $account)) {
+    return;
+  }
+
+  // Get the entity type info array for the current access check and prepare a
+  // conditions object.
+  $conditions = db_or();
+
+  // Perform bundle specific permission checks for the specified entity type.
+  $really_restricted = FALSE;
+
+  foreach (commerce_coupon_get_types() as $bundle_name => $bundle_info) {
+    // If the user has access to view entities of the current bundle...
+    if (user_access('view any commerce_coupon entity of bundle ' . $bundle_name, $account)) {
+      // Add a condition granting access if the entity specified by the view
+      // query is of the same bundle.
+      $conditions->condition($base_table . '.type', $bundle_name);
+    }
+    else {
+      $really_restricted = TRUE;
+      
+      // "View own coupon of type"
+      if ($account->uid && user_access('view own commerce_coupon entities of bundle ' . $bundle_name, $account)) {
+        
+        // Add an AND condition group that grants access if the entity specified
+        // by the view query matches the same bundle and belongs to the user.
+        $conditions->condition(db_and()
+          ->condition($base_table . '.type', $bundle_name)
+          ->condition($base_table . '.uid', $account->uid)
+        );
+      }
+      
+      // "View received coupon of type"
+      if (isset($recipient_table)) {
+        if ($account->uid && user_access('view received coupons of type ' . $bundle_name, $account)) {
+          $conditions->condition(db_and()
+            ->condition($base_table . '.type', $bundle_name)
+            ->condition($recipient_table . '.commerce_coupon_recipient_target_id', $account->uid)
+          );
+        }
+
+        // "View non-user-specific coupon of type"        
+        if (user_access('view non user specific coupons of type ' . $bundle_name, $account)) {
+          $conditions->condition(db_and()
+            ->condition($base_table . '.type', $bundle_name)
+            ->condition($recipient_table . '.commerce_coupon_recipient_target_id', NULL)
+          );
+        }
+      }
+    }
+  }
+
+  // No further conditions need to be added to the query if we determined above
+  // that the user has an administrative view permission for any entity of the
+  // type and bundles represented by the query.
+  if (!$really_restricted) {
+    return;
+  }
+
+  // Perform 'view own' access control for the entity in the query if the user
+  // is authenticated.
+  if ($account->uid && user_access('view own commerce_coupon entities', $account)) {
+    $conditions->condition($base_table . '.uid', $account->uid);
+  }
+
+  // Prepare an array of condition alter hooks to invoke and an array of context
+  // data for the current query.
+  $hooks = array(
+    'commerce_entity_access_condition_commerce_coupon',
+    'commerce_entity_access_condition'
+  );
+
+  $context = array(
+    'account' => $account,
+    'entity_type' => 'commerce_coupon',
+    'base_table' => $base_table
+  );
+
+  // Allow other modules to add conditions to the array as necessary.
+  drupal_alter($hooks, $conditions, $context);
+
+  // If we have more than one condition based on the entity access permissions
+  // and any hook implementations...
+  if (count($conditions)) {
+    // Add the conditions to the query.
+    $query->condition($conditions);
+  }
+  else {
+    // Otherwise, since we don't have any possible conditions to match against,
+    // we falsify this query. View checks are access grants, not access denials.
+    $query->where('1 = 0');
+  }
+  
+  return $query;
+}
+
+/*
+ * Implements hook_commerce_coupon_access_redeem().
+ */
+function commerce_coupon_user_commerce_coupon_access_redeem($coupon, $account = NULL) {
+  return commerce_coupon_user_received_coupon_access('redeem', $coupon, $account = NULL);
+}
+
+/*
+ * Implements hook_commerce_coupon_access_view().
+ */
+function commerce_coupon_user_commerce_coupon_access_view($coupon, $account = NULL) {
+  return commerce_coupon_user_received_coupon_access('view', $coupon, $account = NULL);
+}
+
+/**
+ * Evaluate access per operation for coupons based on user-coupon permissions.
+ * 
+ * @param string $op
+ *  Either "view" or "redeem"
+ * 
+ * @param CommerceCoupon $coupon
+ *  Commerce coupon entity
+ * 
+ * @param object $account
+ *  User entity
+ * 
+ * @return boolean
+ */
+function commerce_coupon_user_received_coupon_access($op, $coupon, $account = NULL) {
+  if (user_access($op . ' coupons of type ' . $coupon->type) || user_access('redeem any coupon')) {
+    return TRUE;
+  }
+    
+  $coupon_wrapper = entity_metadata_wrapper('commerce_coupon', $coupon);  
+  // If the coupon does not specify a recipient and the user is allowed to
+  // redeem non-user-specific coupons of this type:
+  if (!$coupon_wrapper->commerce_coupon_recipient->value() && user_access($op . ' non user specific coupons of type ' . $coupon->type)) {
+    return TRUE;
+  }
+  // If the user is allowed to redeem coupons they've received:
+  else if (user_access($op . ' received coupons of type ' . $coupon->type)) {
+    if (!$account) {
+      global $user;
+    }
+    else {
+      $user = $account;
+    }
+
+    // Evaluate "received coupon" permissions.
+    if ($coupon_wrapper->commerce_coupon_recipient->value() && $coupon_wrapper->commerce_coupon_recipient->raw() == $user->uid) {
+      return TRUE;
+    }
+  }
+}
+
+/*
+ * Implements hook_commerce_coupon_coupon_entity_form_alter().
+ */
+function commerce_coupon_user_commerce_coupon_coupon_entity_form_alter(&$form, &$form_state, $coupon) {
+  $lang = field_language('commerce_coupon', $coupon, 'commerce_coupon_recipient');
+  if (!empty($form['commerce_coupon_fields']['commerce_coupon_recipient'][$lang])) {
+    foreach (element_children($form['commerce_coupon_fields']['commerce_coupon_recipient'][$lang]) as $delta) {
+      $default_value =& $form['commerce_coupon_fields']['commerce_coupon_recipient'][$lang][$delta]['target_id']['#default_value'];
+      if ($default_value == 'Anonymous (0)') {
+        // It is important to actually keep this field empty, even if the user
+        // chose anonymous for some reason.
+        $default_value = '';
+      }
+    }
+  }
+}

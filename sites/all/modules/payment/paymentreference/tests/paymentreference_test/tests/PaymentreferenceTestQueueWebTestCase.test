@@ -1,0 +1,129 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentreferenceTestQueueWebTestCase.
+ */
+
+/**
+ * Tests the reference queue.
+ */
+class PaymentreferenceTestQueueWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Queue CRUD and its Field integration',
+      'group' => 'Payment Reference',
+    );
+  }
+  /**
+   * Overrides parent::setUp().
+   */
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('paymentreference'));
+  }
+
+  function testQueueCRUD() {
+    $payment_method = $this->paymentMethodCreate(1, payment_method_controller_load('PaymentMethodControllerUnavailable'));
+    $payment = $this->paymentCreate(2, $payment_method);
+    $payment->setStatus(new PaymentStatusItem(PAYMENT_STATUS_SUCCESS));
+    entity_save('payment', $payment);
+    $entity_type = 'foo';
+    $bundle = 'bar';
+    $field_name = 'baz';
+
+    // Test queueing a payment.
+    paymentreference_insert($entity_type, $bundle, $field_name, $payment->pid);
+    $count = db_query("SELECT COUNT(1) FROM {paymentreference} WHERE entity_type = :entity_type AND bundle = :bundle AND field_name = :field_name AND pid = :pid", array(
+      ':entity_type' => $entity_type,
+      ':bundle' => $bundle,
+      ':field_name' => $field_name,
+      ':pid' => $payment->pid,
+    ))->fetchField();
+    $this->assertTrue($count, 'A payment is saved to the queue correctly.');
+
+    // Test loading a queued payment.
+    $pid = paymentreference_load($entity_type, $bundle, $field_name, $payment->uid);
+    $this->assertTrue((bool) $pid, 'A queued payment is loaded correctly.');
+    $pid = paymentreference_load('bar', $bundle, $field_name, $payment->uid);
+    $this->assertFalse($pid, 'Loading a queued payment using the wrong entity type fails.');
+    $pid = paymentreference_load($entity_type, 'baz', $field_name, $payment->uid);
+    $this->assertFalse($pid, 'Loading a queued payment using the wrong bundle fails.');
+    $pid = paymentreference_load($entity_type, $bundle, 'foo', $payment->uid);
+    $this->assertFalse($pid, 'Loading a queued payment using the wrong field name fails.');
+    $pid = paymentreference_load($entity_type, $bundle, $field_name, $payment->uid + 1);
+    $this->assertFalse($pid, 'Loading a queued payment using the wrong UID fails.');
+
+    // Test deleting a payment from the queue.
+    paymentreference_delete_by_pid($payment->pid);
+    $count = db_query("SELECT COUNT(1) FROM {paymentreference} WHERE pid = :pid", array(
+      ':pid' => $payment->pid,
+    ))->fetchField();
+    $this->assertFalse($count, 'A payment can be deleted from the queue by PID.');
+    paymentreference_insert($entity_type, $bundle, $field_name, $payment->pid);
+    paymentreference_delete_by_field($field_name);
+    $count = db_query("SELECT COUNT(1) FROM {paymentreference} WHERE field_name = :field_name", array(
+      ':field_name' => $field_name,
+    ))->fetchField();
+    $this->assertFalse($count, 'A payment can be deleted from the queue by field name.');
+    paymentreference_insert($entity_type, $bundle, $field_name, $payment->pid);
+    paymentreference_delete_by_field_instance($entity_type, $bundle, $field_name);
+    $count = db_query("SELECT COUNT(1) FROM {paymentreference} WHERE entity_type = :entity_type AND bundle = :bundle AND field_name = :field_name", array(
+      ':entity_type' => $entity_type,
+      ':bundle' => $bundle,
+      ':field_name' => $field_name,
+    ))->fetchField();
+    $this->assertFalse($count, 'A payment can be deleted from the queue by field instance.');
+  }
+
+  function testQueueFieldImplementation() {
+    // Create a field, two instances and three payments.
+    $entity_type = 'node';
+    $bundles = array(
+      1 => 'article',
+      2 => 'article',
+      3 => 'page',
+    );
+    $field_name = 'baz';
+    $field = array(
+      'field_name' => $field_name,
+      'type' => 'paymentreference',
+    );
+    field_create_field($field);
+    $instance_article = $instance_page = array(
+      'entity_type' => $entity_type,
+      'field_name' => $field_name,
+    );
+    $instance_article['bundle'] = $bundles[1];
+    $instance_article = field_create_instance($instance_article);
+    $instance_page['bundle'] = $bundles[3];
+    $instance_page = field_create_instance($instance_page);
+    $payment_method = $this->paymentMethodCreate(1, payment_method_controller_load('PaymentMethodControllerUnavailable'));
+    foreach (range(1, 3) as $pid) {
+      $payment = $this->paymentCreate(2, $payment_method);
+      $payment->setStatus(new PaymentStatusItem(PAYMENT_STATUS_SUCCESS));
+      entity_save('payment', $payment);
+      paymentreference_insert($entity_type, $bundles[$pid], $field_name, $pid);
+    }
+
+    // Test response to payment deletion.
+    entity_delete('payment', 1);
+    $pid = paymentreference_load($entity_type, $bundles[1], $field_name, 2);
+    $this->assertNotEqual($pid, 1, 'When deleting a payment, it is removed from the queue as well.');
+
+    // Test response to field instance deletion.
+    field_delete_instance($instance_article);
+    $pid = paymentreference_load($entity_type, $bundles[2], $field_name, 2);
+    $this->assertNotEqual($pid, 2, 'When deleting a field instance, all payments associated with it are removed from the queue.');
+
+    // Test response to field deletion.
+    field_delete_field($field_name);
+    $pid = paymentreference_load($entity_type, $bundles[3], $field_name, 2);
+    $this->assertFalse($pid, 'When deleting a field, all payments associated with it are removed from the queue.');
+  }
+}

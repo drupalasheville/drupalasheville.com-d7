@@ -1,0 +1,26 @@
+name = Payment
+description = "Allows payments to be made using any of the available payment methods."
+core = 7.x
+configure = admin/config/services/payment
+dependencies[] = entity
+package = Payment
+files[] = payment.classes.inc
+files[] = payment.generate.inc
+files[] = views/PaymentViewsHandlerAccessOwnPaymentOverview.inc
+files[] = views/PaymentViewsHandlerFieldPaymentMethodControllerTitle.inc
+files[] = views/PaymentViewsHandlerFieldPaymentMethodControllerDescription.inc
+files[] = views/PaymentViewsHandlerFieldPaymentMethodEnabledMachineName.inc
+files[] = views/PaymentViewsHandlerFieldPaymentMethodOperations.inc
+files[] = views/PaymentViewsHandlerFieldPaymentStatusTitle.inc
+files[] = views/PaymentViewsHandlerFieldPaymentOperations.inc
+files[] = views/PaymentViewsHandlerFieldTranslatableString.inc
+files[] = views/PaymentViewsHandlerFilterPaymentMethodControllerTitle.inc
+files[] = views/PaymentViewsHandlerFilterPaymentMethodTitle.inc
+files[] = views/PaymentViewsHandlerFilterPaymentStatusItemStatus.inc
+files[] = tests/PaymentWebTestCase.test
+; Information added by Drupal.org packaging script on 2014-07-02
+version = "7.x-1.10+1-dev"
+core = "7.x"
+project = "payment"
+datestamp = "1404314928"
+

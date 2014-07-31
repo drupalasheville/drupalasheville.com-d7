@@ -1,0 +1,24 @@
+#commerce-coupon-discount-coupon-form {
+  clear:both;
+}
+
+#commerce-coupon-discount-coupon-form fieldset .fieldset-legend {
+  text-transform: none;
+  position:relative;
+  padding-left: 5px;  
+}
+
+#commerce-coupon-discount-coupon-form .fieldset-wrapper {
+  border-top:1px solid #CCCCCC;
+  padding: 5px 13px 13px 15px;
+}
+
+#commerce-coupon-discount-coupon-form fieldset {
+  border:none;
+  padding: 0px;
+}
+
+.commerce-coupon-discount-coupon-edit-cell,
+.commerce-coupon-discount-coupon-remove-cell{
+  width:10%
+}

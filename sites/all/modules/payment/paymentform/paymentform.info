@@ -1,0 +1,15 @@
+name = Payment Form Field
+description = Provides a field to add payment forms to entities.
+dependencies[] = currency_api
+dependencies[] = payment
+package = Payment
+core = 7.x
+files[] = tests/paymentform.test
+files[] = tests/PaymentformWebTestCase.test
+
+; Information added by Drupal.org packaging script on 2014-07-02
+version = "7.x-1.10+1-dev"
+core = "7.x"
+project = "payment"
+datestamp = "1404314928"
+

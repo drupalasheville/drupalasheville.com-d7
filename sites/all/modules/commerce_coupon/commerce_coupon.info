@@ -1,0 +1,21 @@
+name = "Commerce Coupon"
+description = "Coupon functionality for Drupal Commerce"
+package = "Commerce (contrib)"
+core = 7.x
+dependencies[] = commerce_discount
+
+files[] = includes/commerce_coupon.controller.inc
+files[] = includes/views/handlers/commerce_coupon_handler_field_discount_value_display.inc
+files[] = includes/views/handlers/commerce_coupon_handler_field_coupon_order_remove.inc
+files[] = includes/views/handlers/commerce_coupon_handler_field_coupon_delete.inc
+files[] = includes/views/handlers/commerce_coupon_handler_field_coupon_edit.inc
+files[] = includes/views/handlers/commerce_coupon_handler_field_coupon_link.inc
+files[] = includes/views/handlers/commerce_coupon_handler_argument_coupon_id.inc
+files[] = includes/views/handlers/commerce_coupon_handler_argument_coupon_code.inc
+files[] = commerce_coupon.info.inc
+; Information added by Drupal.org packaging script on 2014-07-18
+version = "7.x-2.0-beta3+3-dev"
+core = "7.x"
+project = "commerce_coupon"
+datestamp = "1405719533"
+

@@ -1,0 +1,14 @@
+name = Payment tests
+description = "Supports Payment Reference's automated tests."
+core = 7.x
+dependencies[] = paymentreference
+package = Payment
+hidden = TRUE
+files[] = tests/PaymentreferenceTestQueueWebTestCase.test
+
+; Information added by Drupal.org packaging script on 2014-07-02
+version = "7.x-1.10+1-dev"
+core = "7.x"
+project = "payment"
+datestamp = "1404314928"
+

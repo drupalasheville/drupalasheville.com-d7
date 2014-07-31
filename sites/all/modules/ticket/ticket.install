@@ -1,0 +1,495 @@
+<?php
+/**
+ * @file
+ * Ticket Install file.
+ */
+
+/**
+ * Implements hook_enable().
+ */
+function ticket_enable() {
+  // Disable Registration module upon enabling ticket.
+  if (module_exists('registration') ||
+      module_exists('registration_entity_access') ||
+      module_exists('registration_views') ||
+      module_exists('registration_waitlist')) {
+
+    module_disable(array(
+      'registration',
+      'registration_entity_access',
+      'registration_views',
+      'registration_waitlist',
+    ), FALSE);
+  }
+}
+
+/**
+ * Implements hook_requirements().
+ *
+ * Warn the user if both modules are enabled that 'bad things' will happen if
+ * both modules are enabled at the same time.
+ */
+function ticket_requirements($phase) {
+  $t = get_t();
+  $requirements = array();
+
+  if ($phase == 'runtime') {
+
+    if (module_exists('registration') ||
+        module_exists('registration_entity_access') ||
+        module_exists('registration_views') ||
+        module_exists('registration_waitlist')) {
+
+      $requirements['ticket']['title'] = $t('Tickets');
+      $requirements['ticket']['severity'] = REQUIREMENT_ERROR;
+      $requirements['ticket']['description'] = $t('Tickets is not compatible with Registration module. Please disable one or the other.');
+      $requirements['ticket']['value'] = $t('Module Conflict');
+    }
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implements hook_field_schema().
+ */
+function ticket_field_schema($field) {
+  if ($field['type'] == 'ticket_type') {
+    return array(
+      'columns' => array(
+        'value' => array(
+          'description' => 'Ticket Type ID',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+      ),
+      'indexes' => array(
+        'value' => array('value'),
+      ),
+      'foreign keys' => array(
+        'ttid' => array(
+          'table' => 'ticket_type',
+          'columns' => array('value' => 'ttid'),
+        ),
+      ),
+    );
+  }
+}
+
+/**
+ * Implements hook_schema().
+ */
+function ticket_schema() {
+  $schema = array();
+
+  $schema['ticket_type'] = array(
+    'description' => 'Stores ticket type entity records.',
+    'fields' => array(
+      'ttid' => array(
+        'description' => 'Ticket type ID.',
+        'type' => 'serial',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+      ),
+      'revision_id' => array(
+        'description' => 'The current {ticket_type_revision.revision_id} version identifier.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'entity_type' => array(
+        'description' => 'The entity type of the entity this ticket type is attached to.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'entity_id' => array(
+        'description' => 'The entity ID this ticket type is attached to.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'field_name' => array(
+        'description' => 'The field where this ticket type is attached to the entity.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'status' => array(
+        'description' => 'The enabled/disabled status of this ticket type.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'size' => 'tiny',
+        'default' => 1,
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the type was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the type was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('ttid'),
+    'indexes' => array(
+      'status' => array('status'),
+      'host' => array('entity_type', 'entity_id', 'status'),
+    ),
+  );
+
+  $schema['ticket_type_revision'] = array(
+    'description' => 'Stores ticket type entity record revisions.',
+    'fields' => array(
+      'revision_id' => array(
+        'description' => 'The version identifier.',
+        'type' => 'serial',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+      ),
+      'ttid' => array(
+        'description' => 'Ticket type ID.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The enabled/disabled active of this ticket type.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'size' => 'tiny',
+        'default' => 1,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the type was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('revision_id'),
+    'indexes' => array(
+      'ttid' => array('ttid'),
+      'changed' => array('changed'),
+    ),
+  );
+
+  $schema['ticket_registration'] = array(
+    'description' => 'Stores ticket registration entities records.',
+    'fields' => array(
+      'trid' => array(
+        'description' => 'Ticket registration ID.',
+        'type' => 'serial',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+      ),
+      'revision_id' => array(
+        'description' => 'The current {ticket_registration_revision.revision_id} version identifier.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'bundle' => array(
+        'description' => 'The ticket type ID.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'user_uid' => array(
+        'description' => 'The account id registered for the related event.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'author_uid' => array(
+        'description' => 'The account id that created the registration.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the registration was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the registration was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('trid'),
+    'indexes' => array(
+      'bundle' => array('bundle'),
+      'user_uid' => array('user_uid'),
+      'author_uid' => array('author_uid'),
+    ),
+    'foreign keys' => array(
+      'ticket_type' => array(
+        'table' => 'ticket_type',
+        'columns' => array('bundle', 'ttid'),
+      ),
+      'ticket_registration_user_uid' => array(
+        'table' => 'users',
+        'columns' => array('user_uid' => 'uid'),
+      ),
+      'ticket_registration_author_uid' => array(
+        'table' => 'users',
+        'columns' => array('author_uid' => 'uid'),
+      ),
+    ),
+  );
+
+  $schema['ticket_registration_revision'] = array(
+    'description' => 'Stores ticket registration entities records.',
+    'fields' => array(
+      'revision_id' => array(
+        'description' => 'The version identifier.',
+        'type' => 'serial',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+      ),
+      'trid' => array(
+        'description' => 'Ticket registration ID.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The enabled/disabled status of this ticket registration.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'size' => 'tiny',
+        'default' => 1,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the registration was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('revision_id'),
+    'indexes' => array(
+      'trid' => array('trid'),
+      'changed' => array('changed', 'status'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function ticket_install() {
+  $t = get_t();
+
+  // Fields.
+  $ticket_type_fields = array(
+    'label' => array(
+      'type' => 'text',
+      'label' => $t('Ticket type'),
+      'description' => $t('The name for this ticket type.'),
+      'required' => TRUE,
+      'settings' => array(),
+      'display' => array(
+        'default' => array(
+          'label' => 'hidden',
+        ),
+      ),
+    ),
+
+    'description' => array(
+      'type' => 'text_long',
+      'label' => $t('Description'),
+      'description' => $t('Provide more information about this ticket type.'),
+      'settings' => array(
+        'text_processing' => 1,
+      ),
+      'display' => array(
+        'default' => array(
+          'label' => 'hidden',
+        ),
+      ),
+    ),
+
+    'availability' => array(
+      'type' => 'datestamp',
+      'field_settings' => array(
+        'granularity' => array(
+          'year' => 'year',
+          'month' => 'month',
+          'day' => 'day',
+          'hour' => 'hour',
+          'minute' => 'minute',
+          'second' => 0,
+        ),
+        'todate' => 'optional',
+      ),
+      'label' => $t('Availability'),
+      'description' => $t('The date and time when this ticket type will be available to order.'),
+      'settings' => array(),
+      'display' => array(
+        'default' => array(
+          'type' => 'hidden',
+        ),
+      ),
+    ),
+
+    'quantity' => array(
+      'type' => 'number_integer',
+      'label' => $t('Total quantity'),
+      'description' => $t('The total number of tickets available. Leave blank for no limit.'),
+      'settings' => array(
+        'min' => 1,
+      ),
+      'display' => array(
+        'default' => array(
+          'label' => 'hidden',
+          'type' => 'hidden',
+        ),
+      ),
+    ),
+
+    'order_min' => array(
+      'type' => 'number_integer',
+      'label' => $t('Min per order'),
+      'description' => $t('The minimum number of tickets per order.'),
+      'settings' => array(
+        'min' => 1,
+      ),
+      'required' => TRUE,
+      'default_value' => array(array('value' => 1)),
+      'display' => array(
+        'default' => array(
+          'label' => 'hidden',
+          'type' => 'hidden',
+        ),
+      ),
+    ),
+
+    'order_max' => array(
+      'type' => 'number_integer',
+      'label' => $t('Max per order'),
+      'description' => $t('The maxiumum number of tickets per order. Leave blank for no maximum.'),
+      'settings' => array(
+        'min' => 1,
+      ),
+      'display' => array(
+        'default' => array(
+          'label' => 'hidden',
+          'type' => 'hidden',
+        ),
+      ),
+    ),
+  );
+
+  // Add fields to the ticket_type entity.
+  ticket_create_field('ticket_type', 'ticket_type', $ticket_type_fields);
+}
+
+/**
+ * Helper function to create and register fields on entities.
+ */
+function ticket_create_field($entity_type, $bundle, $fields) {
+  // Add fields to the ticket type entity.
+  field_cache_clear();
+  field_associate_fields('ticket');
+
+  foreach ($fields as $field_name => $field_info) {
+    // Create the field base if it does not exist.
+    $field_name = $entity_type . '_' . $field_name;
+    $field_base = field_info_field($field_name);
+    if (!$field_base) {
+      $field_base = array(
+        'field_name' => $field_name,
+        'type' => $field_info['type'],
+      );
+      if (isset($field_info['field_settings'])) {
+        $field_base['settings'] = $field_info['field_settings'];
+      }
+      field_create_field($field_base);
+    }
+
+    // Discard fields we don't need for the field instance.
+    unset($field_info['type']);
+    unset($field_info['field_settings']);
+
+    // Add the field instance.
+    $field_instance = array(
+      'field_name' => $field_name,
+      'entity_type' => $entity_type,
+      'bundle' => $bundle,
+      'required' => FALSE,
+      'widget' => array(),
+      'settings' => array(),
+    );
+    $field_instance = array_merge($field_instance, $field_info);
+    field_create_instance($field_instance);
+  }
+}
+
+/**
+ * Update ticket registrations to track user registered and author_uid.
+ */
+function ticket_update_7001(&$sandbox) {
+  // Modify the description on uid to distinguish author_uid. There's no way
+  // to update the corresponding foreign key name, but the data stays the same.
+  db_change_field('ticket_registration', 'uid', 'user_uid', array(
+    'description' => 'The account id registered for the related event.',
+    'type' => 'int',
+    'not null' => TRUE,
+    'unsigned' => TRUE,
+    'default' => 0,
+  ));
+
+  // Add the new author_uid field with index and foreign key constraint.
+  db_add_field('ticket_registration', 'author_uid',
+    array(
+      'description' => 'The account id that created the registration.',
+      'type' => 'int',
+      'not null' => TRUE,
+      'unsigned' => TRUE,
+      'default' => 0,
+    ),
+    array(
+      'indexes' => array(
+        'author_uid' => array('author_uid'),
+      ),
+      'foreign keys' => array(
+        'ticket_registration_author_uid' => array(
+          'table' => 'users',
+          'columns' => array('author_uid' => 'uid'),
+        ),
+      ),
+    )
+  );
+
+  db_drop_field('ticket_registration', 'status');
+}

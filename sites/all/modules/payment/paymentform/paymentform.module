@@ -1,0 +1,245 @@
+<?php
+
+/**
+ * @file
+ *   Hook implementations and general functions.
+ */
+
+/**
+ * Implements hook_field_info().
+ */
+function paymentform_field_info() {
+  $field['paymentform'] = array(
+    'label' => t('Payment form'),
+    'description' => t('Adds a payment form to the <em>view</em> page.'),
+    'instance_settings' => array(
+      'currency_code' => 'XXX',
+    ),
+    'default_widget' => 'paymentform_line_item',
+    'default_formatter' => 'paymentform',
+  );
+
+  return $field;
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function paymentform_field_widget_info() {
+  $widget['paymentform_line_item'] = array(
+    'label' => t('Payment line item configuration'),
+    'description' => t("Allows users to configure line items for the form's payment."),
+    'field types' => array('paymentform'),
+    'behaviors' => array(
+      'multiple values' => FIELD_BEHAVIOR_CUSTOM,
+      'default value' => FIELD_BEHAVIOR_NONE,
+    ),
+  );
+
+  return $widget;
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function paymentform_field_formatter_info() {
+  $formatters['paymentform'] = array(
+    'label' => t('Payment form'),
+    'field types' => array('paymentform'),
+  );
+
+  return $formatters;
+}
+
+/**
+ * Implements hook_field_instance_settings_form().
+ */
+function paymentform_field_instance_settings_form($field, $instance) {
+  $form = array();
+
+  if ($instance['widget']['type'] == 'paymentform_line_item') {
+    $form['currency_code'] = array(
+      '#type' => 'select',
+      '#title' => t('Currency'),
+      '#options' => payment_currency_options(),
+      '#default_value' => $instance['settings']['currency_code'],
+      '#required' => TRUE,
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function paymentform_field_widget_form(array &$form, array &$form_state, array $field, array $instance, $langcode, array $items, $delta, array $element) {
+  global $user;
+
+  $default_value = array();
+  foreach ($items as $line_item_data) {
+    $default_value[] = new PaymentLineItem($line_item_data);
+  }
+  if ($instance['widget']['type'] == 'paymentform_line_item') {
+    $element = array(
+      '#type' => 'value',
+      // Use a validation callback to convert the PaymentLineItem objects from
+      // the payment_line_item element to arrays usable by Field API.
+      '#element_validate' => array('paymentform_field_widget_form_validate'),
+    ) + $element;
+    $element['line_item'] = array(
+      '#type' => 'payment_line_item',
+      '#currency_code' => $instance['settings']['currency_code'],
+      '#cardinality' => $field['cardinality'] == FIELD_CARDINALITY_UNLIMITED ? 0 : (int) $field['cardinality'],
+      '#default_value' => $default_value,
+      '#required' => $element['#required'],
+    );
+  }
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_validate().
+ */
+function paymentform_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+  if ($field['type'] == 'paymentform') {
+    foreach ($items as $delta => $line_item_data) {
+      $base = array(
+        'delta' => $delta,
+      );
+
+      // Amount.
+      $base['property'] = 'amount';
+      if (!is_float($line_item_data['amount'])) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'paymentform_line_item_amount_no_float',
+          'message' => t('The amount is no floating point.'),
+        ) + $base;
+      }
+
+      // Quantity.
+      $base['property'] = 'quantity';
+      if (!is_int($line_item_data['quantity'])) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'paymentform_line_item_quantity_no_integer',
+          'message' => t('The quantity is no integer.'),
+        ) + $base;
+      }
+      elseif ($line_item_data['quantity'] < 0) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'paymentform_line_item_quantity_negative',
+          'message' => t('The quantity cannot be negative.'),
+        ) + $base;
+      }
+
+      // Tax rate.
+      $base['property'] = 'tax_rate';
+      if (!is_float($line_item_data['tax_rate'])) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'paymentform_line_item_tax_rate_no_float',
+          'message' => t('The tax rate is no floating point.'),
+        ) + $base;
+      }
+      elseif ($line_item_data['tax_rate'] < 0) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'paymentform_line_item_tax_rate_negative',
+          'message' => t('The tax rate cannot be negative.'),
+        ) + $base;
+      }
+
+      // Machine name.
+      $base['property'] = 'name';
+      if (empty($line_item_data['name'])) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'paymentform_line_item_name_empty',
+          'message' => t('The machine-readable name is empty.'),
+        ) + $base;
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_field_widget_error().
+ */
+function paymentform_field_widget_error($element, $error, $form, &$form_state) {
+  // This is a form-element specific error.
+  if (isset($error['delta']) && isset($error['property'])) {
+    form_error($element['line_item']['container_' . $error['delta']][$error['property']], $error['message']);
+  }
+  // This is a field-wide error.
+  else {
+    form_error($element['line_item'], $error['message']);
+  }
+}
+
+/**
+ * Implements hook_field_is_empty().
+ */
+function paymentform_field_is_empty($item, array $field) {
+  if ($field['type'] == 'paymentform') {
+    return empty($item);
+  }
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function paymentform_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  if ($display['type'] == 'paymentform') {
+    list($entity_id) = entity_extract_ids($entity_type, $entity);
+    $payment = new Payment(array(
+      'context_data' => array(
+        'entity_type' => $entity_type,
+        'entity_id' => $entity_id,
+      ),
+      'currency_code' => $instance['settings']['currency_code'],
+      'description' => $instance['label'],
+      'finish_callback' => 'paymentform_payment_finish',
+    ));
+    foreach ($items as $line_item_data) {
+      $payment->setLineItem(new PaymentLineItem($line_item_data));
+    }
+
+    return drupal_get_form('payment_form_standalone', $payment);
+  }
+}
+
+/**
+ * Implements Payment::finish_callback.
+ */
+function paymentform_payment_finish(Payment $payment) {
+  $view = '';
+  if (payment_access('view', $payment)) {
+    $view = ' ' . l(t('View payment'), 'payment/' . $payment->pid) . '.';
+  }
+  if (payment_status_is_or_has_ancestor($payment->getStatus()->status, PAYMENT_STATUS_PENDING)) {
+    drupal_set_message(t('Your payment is still being processed.') . $view);
+  }
+  elseif (payment_status_is_or_has_ancestor($payment->getStatus()->status, PAYMENT_STATUS_SUCCESS)) {
+    drupal_set_message(t('Your payment was successfully completed.') . $view);
+  }
+  elseif (payment_status_is_or_has_ancestor($payment->getStatus()->status, PAYMENT_STATUS_FAILED)) {
+    drupal_set_message(t('Your payment failed.') . $view);
+  }
+
+  $entity = entity_load_single($payment->context_data['entity_type'], $payment->context_data['entity_id']);
+  if ($uri = entity_uri($payment->context_data['entity_type'], $entity)) {
+    drupal_goto($uri['path'], $uri['options']);
+  }
+  drupal_goto('<front>');
+}
+
+
+
+/**
+ * Implements form validate callback for a paymentform_line_item field widget.
+ */
+function paymentform_field_widget_form_validate(array $element, array &$form_state) {
+  $line_items = array();
+  foreach ($form_state['values'][$element['#field_name']][$element['#language']]['line_item'] as $line_item) {
+    $line_items[] = (array) $line_item;
+  }
+  form_set_value($element, $line_items, $form_state);
+}

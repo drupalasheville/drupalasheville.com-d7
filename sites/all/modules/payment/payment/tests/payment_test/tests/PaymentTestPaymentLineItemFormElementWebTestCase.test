@@ -1,0 +1,153 @@
+<?php
+
+/**
+ * @file
+ * Contains class PaymentTestPaymentLineItemFormElementWebTestCase.
+ */
+
+/**
+ * Tests the payment_line_item form element.
+ */
+class PaymentTestPaymentLineItemFormElementWebTestCase extends PaymentWebTestCase {
+
+  static function getInfo() {
+    return array(
+      'description' => '',
+      'name' => 'Payment line item form element',
+      'group' => 'Payment',
+    );
+  }
+
+  /**
+   * Overrides parent::setUp().
+   */
+  function setUp(array $modules = array()) {
+    parent::setUp($modules + array('payment', 'payment_test'));
+    $this->PaymentLineItemData = array(
+      'line_item[container_0][amount]' => '10.0',
+      'line_item[container_0][description]' => 'foo',
+      'line_item[container_0][name]' => 'bar',
+      'line_item[container_0][quantity]' => '1',
+      'line_item[container_0][tax_rate]' => '10',
+    );
+  }
+
+  /**
+   * Test the presence of widget's input elements.
+   */
+  function LineItemElements($delta_max = 0) {
+    for ($delta = 0; $delta <= $delta_max; $delta++) {
+      foreach (array('amount', 'description', 'name', 'quantity', 'tax-rate') as $name) {
+        $elements = $this->xpath('//input[@id="edit-line-item-container-' . $delta . '-' . $name . '"]');
+        $this->assertTrue(isset($elements[0]), "Payment line item configuration widget contains <em>$name</em> element for line item $delta.");
+      }
+    }
+  }
+
+  /**
+   * Test the presence of widget's submit button.
+   */
+  function SubmitButton($present) {
+    $elements = $this->xpath('//input[@id="payment-ajax-replace"]');
+    if ($present) {
+      $this->assertTrue(isset($elements[0]), "Payment line item configuration widget contains an <em>Add a line item</em> button if the number if line items is less than the widget's cardinality.");
+    }
+    else {
+      $this->assertFalse(isset($elements[0]), 'Payment line item configuration widget contains no <em>Add a line item</em> button.');
+    }
+  }
+
+  /**
+   * Test a regular submission.
+   */
+  function testSubmission() {
+    $this->drupalGet('payment_test-form-element-payment-line-item');
+    $this->LineItemElements();
+    $this->SubmitButton(TRUE);
+    $this->drupalPost(NULL, array(), t('Add a line item'));
+    $this->LineItemElements(1);
+    $this->SubmitButton(FALSE);
+  }
+
+  /**
+   * Test an AJAX submission.
+   */
+  function testAJAXSubmission() {
+    $this->drupalPostAJAX('payment_test-form-element-payment-line-item', array(), 'payment-line-item', NULL, array(), array(), 'payment-test-form-payment-line-item');
+    $this->LineItemElements(1);
+    $this->SubmitButton(FALSE);
+  }
+
+  /**
+   * Test default value handling.
+   */
+  function testDefaultValues() {
+    $this->drupalGet('payment_test-form-element-payment-line-item/default-values');
+    foreach (payment_test_default_line_items() as $delta => $line_item) {
+      $properties = array(
+        'amount' => $line_item->amount,
+        'description' => $line_item->description,
+        'name' => $line_item->name,
+        'quantity' => $line_item->quantity,
+        'tax_rate' => $line_item->tax_rate * 100,
+      );
+      foreach ($properties as $property => $value) {
+        $elements = $this->xpath('//input[@id="edit-line-item-container-' . $delta . '-' . drupal_clean_css_identifier($property) . '" and @value="' . $value . '"]');
+        $this->assertTrue(isset($elements[0]), "The element contains the <em>$property</em> value for default line item $delta.");
+      }
+    }
+  }
+
+  /**
+   * Test validation.
+   */
+  function testValidation() {
+    // Test valid values.
+    $this->drupalPost('payment_test-form-element-payment-line-item', $this->PaymentLineItemData, t('Submit'));
+    $this->assertUrl('user', array(), 'Valid values trigger form submission.');
+
+    // Test leaving some elements empty.
+    $values = array(
+      'line_item[container_0][description]' => '',
+    ) + $this->PaymentLineItemData;
+    $this->drupalPost('payment_test-form-element-payment-line-item', $values, t('Submit'));
+    $this->assertRaw(t('%title is required, or leave all fields for this line item empty.', array(
+      '%title' => t('Description'),
+    )), "Partially filling in a line item's element throws a validation error.");
+
+    // Test a non-integer quantity.
+    $values =  array(
+      'line_item[container_0][quantity]' => $this->randomName(2),
+    );
+    $this->drupalPost('payment_test-form-element-payment-line-item', $values, t('Submit'));
+    $this->assertText(t('Quantity should be a positive integer.'), 'A non-integer amount throws a validation error.');
+
+    // Test a non-numeric tax rate.
+    $values =  array(
+      'line_item[container_0][tax_rate]' => $this->randomName(2),
+    );
+    $this->drupalPost('payment_test-form-element-payment-line-item', $values, t('Submit'));
+    $this->assertFieldByXPath('//input[@id="edit-line-item-container-0-tax-rate" and contains(@class, "error")]', NULL, 'A non-numeric tax rate throws a validation error.');
+
+    // Test a negative tax rate.
+    $values =  array(
+      'line_item[container_0][tax_rate]' => '-10',
+    );
+    $this->drupalPost('payment_test-form-element-payment-line-item', $values, t('Submit'));
+    $this->assertFieldByXPath('//input[@id="edit-line-item-container-0-tax-rate" and contains(@class, "error")]', NULL, 'A negative tax rate throws a validation error.');
+
+    // Test a float tax rate that uses a period.
+    $values =  array(
+      'line_item[container_0][tax_rate]' => '19.6',
+    );
+    $this->drupalPost('payment_test-form-element-payment-line-item', $values, t('Submit'));
+    $this->assertFieldByXPath('//input[@id="edit-line-item-container-0-tax-rate" and not(contains(@class, "error"))]', NULL, 'A float tax rate that includes a period is valid.');
+
+    // Test a float tax rate that uses a comma.
+    $values =  array(
+      'line_item[container_0][tax_rate]' => '19,6',
+    );
+    $this->drupalPost('payment_test-form-element-payment-line-item', $values, t('Submit'));
+    $this->assertFieldByXPath('//input[@id="edit-line-item-container-0-tax-rate" and not(contains(@class, "error"))]', NULL, 'A float tax rate that includes a comma is valid.');
+  }
+}
