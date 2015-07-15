@@ -20,7 +20,7 @@ INSTALLING COMMERCE STRIPE MODULE
 
 4. Download Stripe library from https://github.com/stripe/stripe-php and
    extract it to sites/all/libraries/stripe-php
-   NOTE: you must use stripe-php version 1.8.1 or higher for the Commerce Card On File integration to work.
+   NOTE: you must use stripe-php version 1.17.1 or higher for the Commerce Card On File integration to work.
 
 
 CONFIGURING PAYMENT METHOD
@@ -36,6 +36,7 @@ CONFIGURING PAYMENT METHOD
 CREDITS
 -------
 
-Commerce Stripe integration has been written by Ilari Mäkelä.
+Commerce Stripe integration has been written by:
 
-http://drupal.org/user/726092/
+Ilari Mäkelä - https://drupal.org/user/726092
+Avi Goldberg - https://drupal.org/user/2565920

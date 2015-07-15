@@ -29,7 +29,7 @@ function commerce_stripe_requirements($phase) {
     $requirements['commerce_stripe_php']['title'] = $t('Stripe PHP library');
 
     // Check for Commerce currency.
-    if (in_array(commerce_default_currency(), array('USD', 'CAD', 'EUR', 'GBP'))) {
+    if (in_array(commerce_default_currency(), array('USD', 'CAD', 'EUR', 'GBP', 'AUD', 'CHF'))) {
       $requirements['commerce_stripe_currency'] = array(
         'value' => $t('Valid currency'),
         'severity' => REQUIREMENT_OK,
@@ -39,10 +39,21 @@ function commerce_stripe_requirements($phase) {
       $requirements['commerce_stripe_currency'] = array(
         'value' => $t('Invalid default currency!'),
         'severity' => REQUIREMENT_ERROR,
-        'description' => $t('Stripe currently supports only USD and CAD as a currency.'),
+        'description' => $t('Stripe currently supports only USD, CAD, EUR, GBP, AUD and CHF as a currency.'),
       );
     }
     $requirements['commerce_stripe_currency']['title'] = $t('Stripe currency check');
   }
   return $requirements;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function commerce_stripe_uninstall() {
+  // Uninstall rules configuration.
+  $config = rules_config_load('commerce_payment_commerce_stripe');
+  if ($config) {
+    rules_config_delete(array($config->id));
+  }
 }

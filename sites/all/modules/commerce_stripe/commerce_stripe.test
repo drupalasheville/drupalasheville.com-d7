@@ -1,0 +1,44 @@
+<?php
+/**
+ * @file
+ * commerce_stripe.test
+ * This file contains the testing code for this module
+ */
+
+/**
+ * The test case
+ */
+class commerce_stripeTestCase extends DrupalWebTestCase {
+  /**
+   * Info for this test case.
+   */
+  public static function getInfo() {
+    return array(
+      'name' => t('commerce_stripe: basic test'),
+      'description' => t('Make sure that the hooks are called correctly to build the stripe request.'),
+      'group' => 'commerce_stripe',
+    );
+  }
+
+  /*
+   * Enable your module
+   */
+  public function setUp() {
+    // set up a new site with default core modules, commerce_stripe, and
+    // dependencies.
+    parent::setUp('commerce_stripe', 'commerce_stripe_test');
+  }
+
+  /*
+   * Test case for commerce_stripe.
+   */
+  public function testModule() {
+    $order = (object) array(
+      'order_number' => 1234,
+    );
+    $c = array();
+    commerce_stripe_add_metadata($c, $order);
+    $this->assertTrue($c['metadata']['order_number'] == 1234, 'Order number is added to the metadata via the hook system');
+    $this->assertTrue($c['metadata']['whatever'] == 'test', 'Arbitrary information can be added to the metadata using a hook');
+  }
+}

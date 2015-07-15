@@ -7,8 +7,28 @@
  * straight from you Commerce shop.
  */
 
-define('STRIPE_PUBLIC_KEY', '');
-define('STRIPE_SECRET_KEY', '');
+define('STRIPE_DEFAULT_INTEGRATION', 'stripejs');
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_stripe_menu() {
+  $items = array();
+
+  // Add a menu item to stripe payment transactions that can be refunded.
+  $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/commerce-stripe-refund'] = array(
+    'title' => 'Refund',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_stripe_refund_form', 3, 5),
+    'access callback' => 'commerce_stripe_return_access',
+    'access arguments' => array(3, 5),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 1,
+    'file' => 'includes/commerce_stripe.admin.inc',
+  );
+  return $items;
+}
 
 /**
  * Implements hook_libraries_info().
@@ -22,7 +42,7 @@ function commerce_stripe_libraries_info() {
       'dependencies' => array(),
       'version arguments' => array(
         'file' => 'VERSION',
-        'pattern' => '/(\d+\.\d+(\.\d+)?)/',
+        'pattern' => '/(.*)/',
       ),
       'files' => array(
         'php' => array(
@@ -39,20 +59,82 @@ function commerce_stripe_libraries_info() {
 function commerce_stripe_commerce_payment_method_info() {
   $payment_methods = array();
 
+  // The payment method info depends on the stripe integration method (stripe.js
+  // or Stripe Checkout) the administrator has selected.  We need to load
+  // the rules action to determine which integration method is selected.
+  $stripe_integration = STRIPE_DEFAULT_INTEGRATION;
+  $cardonfile = FALSE;
+  $payment_method_rule = rules_config_load('commerce_payment_commerce_stripe');
+  if ($payment_method_rule->active) {
+    foreach ($payment_method_rule->actions() as $action) {
+      // Skip any actions that are not simple rules actions. (i.e. loops)
+      if (!($action instanceof RulesAction)) {
+        continue;
+      }
+
+      if (!empty($action->settings['payment_method']['method_id']) && $action->settings['payment_method']['method_id'] == 'commerce_stripe') {
+        $stripe_integration = $action->settings['payment_method']['settings']['integration_type'];
+        $cardonfile = !empty($action->settings['payment_method']['settings']['cardonfile']) ? TRUE : FALSE;
+        break;
+      }
+    }
+  }
+
   $payment_methods['commerce_stripe'] = array(
-    'title' => _commerce_stripe_load_setting('display_title', t('Stripe')),
+    'title' => t('Stripe'),
+    'short_title' => t('Stripe'),
+    'display_title' => t('Credit card'),
     'description' => t('Stripe payment gateway'),
     'active' => FALSE,
     'terminal' => FALSE,
     'offsite' => FALSE,
-    'cardonfile' => array(
-      'charge callback' => 'commerce_stripe_cardonfile_charge',
-      'update callback' => 'commerce_stripe_cardonfile_update',
-      'delete callback' => 'commerce_stripe_cardonfile_delete',
-    ),
   );
 
+  // Set the cardonfile settings.  We check that the administrator has enabled
+  // cardonfile functionality for commerce_stripe; if not, we do not add the
+  // cardonfile callbacks that would otherwise be called.
+  if ($cardonfile) {
+    // Allow charging and deleting saved cards for any Stripe integration method.
+    $payment_methods['commerce_stripe']['cardonfile'] = array(
+      'charge callback' => 'commerce_stripe_cardonfile_charge',
+      'delete callback' => 'commerce_stripe_cardonfile_delete',
+    );
+    // Allow creating and updating cards outside of the checkout process only
+    // when the Stripe integration method is stripejs.
+    if ($stripe_integration == 'stripejs') {
+      $payment_methods['commerce_stripe']['cardonfile'] += array(
+        'create form callback' => 'commerce_stripe_cardonfile_create_form',
+        'create callback' => 'commerce_stripe_cardonfile_create',
+        'update callback' => 'commerce_stripe_cardonfile_update',
+      );
+    }
+  }
+
   return $payment_methods;
+}
+
+/**
+ * Access callback for processing returns.
+ */
+function commerce_stripe_return_access($order, $transaction) {
+  // Don't allow refunds on non-stripe transactions.
+  if ($transaction->payment_method != 'commerce_stripe') {
+    return FALSE;
+  }
+
+  // Don't allow refunds on fully refunded transactions.
+  if (!empty($transaction->data['stripe']['amount_refunded'])) {
+    if ($transaction->data['stripe']['amount_refunded'] >= $transaction->amount) {
+      return FALSE;
+    }
+  }
+
+  // Only allow refunds on original charge transactions.
+  if (!empty($transaction->data['stripe']['stripe_refund'])) {
+    return FALSE;
+  }
+
+  return commerce_payment_transaction_access('update', $transaction);
 }
 
 /**
@@ -75,6 +157,7 @@ function commerce_stripe_settings_form($settings) {
       'GBP' => t('GBP'),
       'USD' => t('USD'),
       'AUD' => t('AUD'),
+      'CHF' => t('CHF'),
     ),
     '#description' => t('Select the currency that you are using.'),
     '#default_value' => !empty($settings['stripe_currency']) ? $settings['stripe_currency'] : 'USD',
@@ -83,14 +166,14 @@ function commerce_stripe_settings_form($settings) {
     '#type' => 'textfield',
     '#title' => t('Secret Key'),
     '#description' => t('Secret API Key. Get your key from https://stripe.com/'),
-    '#default_value' => !empty($settings['secret_key']) ? $settings['secret_key'] : STRIPE_SECRET_KEY,
+    '#default_value' => !empty($settings['secret_key']) ? $settings['secret_key'] : '',
     '#required' => TRUE,
   );
   $form['public_key'] = array(
     '#type' => 'textfield',
     '#title' => t('Publishable Key'),
     '#description' => t('Publishable API Key. Get your key from https://stripe.com/'),
-    '#default_value' => !empty($settings['public_key']) ? $settings['public_key'] : STRIPE_PUBLIC_KEY,
+    '#default_value' => !empty($settings['public_key']) ? $settings['public_key'] : '',
     '#required' => TRUE,
   );
   $form['display_title'] = array(
@@ -98,6 +181,47 @@ function commerce_stripe_settings_form($settings) {
     '#title' => t('Payment method display title'),
     '#description' => t('Payment method display title'),
     '#default_value' => !empty($settings['display_title']) ? $settings['display_title'] : t('Stripe'),
+  );
+  $form['integration_type'] = array(
+    '#type' => 'select',
+    '#title' => t('Integration type'),
+    '#description' => t('Choose Stripe integration method: Stripe.js makes it easy to collect credit card (and other similarly sensitive) details without having the information touch your server.  Checkout is an embeddable iframe for desktop, tablet, and mobile devices.'),
+    '#options' => array('stripejs' => t('stripe.js'), 'checkout' => t('checkout')),
+    '#default_value' => !empty($settings['integration_type']) ? $settings['integration_type'] : STRIPE_DEFAULT_INTEGRATION,
+  );
+  $form['checkout_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('These settings are specific to "checkout" integration type.'),
+    '#states' => array(
+      'visible' => array(
+        ':input[name$="[integration_type]"]' => array('value' => 'checkout'),
+      ),
+    ),
+  );
+  $form['checkout_settings']['panel_label'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Payment button label'),
+    '#description' => t('The label of the payment button in the Checkout form'),
+    '#default_value' => isset($settings['checkout_settings']['panel_label']) ? $settings['checkout_settings']['panel_label'] : 'Checkout',
+  );
+  $form['checkout_settings']['verify_zipcode'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('ZIP code verification'),
+    '#description' => t('Specify whether Checkout should validate the billing ZIP code'),
+    '#default_value' => isset($settings['checkout_settings']['verify_zipcode']) ? $settings['checkout_settings']['verify_zipcode'] : 0,
+  );
+  $form['checkout_settings']['allow_remember_me'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show "Remember Me" option'),
+    '#description' => t('Specify whether Checkout should allow the user to store their credit card for faster checkout.'),
+    '#default_value' => isset($settings['checkout_settings']['allow_remember_me']) ? $settings['checkout_settings']['allow_remember_me'] : 0,
+  );
+  $form['checkout_settings']['bitcoin'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Accept Bitcoin'),
+    '#description' => t('When checked, Stripe Checkout will accept Bitcoin as payment.').
+      l(t('Must be enabled in your Stripe account.'), 'https://dashboard.stripe.com/account/bitcoin/enable'),
+    '#default_value' => isset($settings['checkout_settings']['bitcoin']) ? $settings['checkout_settings']['bitcoin'] : 0,
   );
   if (module_exists('commerce_cardonfile')) {
     $form['cardonfile'] = array(
@@ -116,10 +240,7 @@ function commerce_stripe_settings_form($settings) {
   return $form;
 }
 
-/**
- * Payment method callback: checkout form.
- */
-function commerce_stripe_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
+function _commerce_stripe_credit_card_form() {
   module_load_include('inc', 'commerce_payment', 'includes/commerce_payment.credit_card');
 
   $credit_card_fields = array(
@@ -145,21 +266,94 @@ function commerce_stripe_submit_form($payment_method, $pane_values, $checkout_pa
     $credit_card_field['#post_render'][] = '_commerce_stripe_credit_card_field_remove_name';
   }
 
-  // Add the total amount.
-  $form['total'] = array(
+  return $form;
+}
+
+/**
+ * Payment method callback: checkout form.
+ */
+function commerce_stripe_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
+  global $user;
+  $integration_type = !empty($payment_method['settings']['integration_type']) ? $payment_method['settings']['integration_type'] : STRIPE_DEFAULT_INTEGRATION;
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $field = field_info_field('commerce_customer_address');
+  $instance = field_info_instance('commerce_customer_profile', 'commerce_customer_address', 'billing');
+
+  $available_countries = NULL;
+  if (isset($form_state['input']['country'])) {
+    $available_countries = array($form_state['input']['country'] => NULL);
+  }
+
+  // Attempt to load the billing address from the order data.
+  $billing_address = addressfield_default_values($field, $instance, array($available_countries));
+  if (!empty($order->commerce_customer_billing)) {
+    if (!empty($order_wrapper->commerce_customer_billing->commerce_customer_address)) {
+      $billing_address = $order_wrapper->commerce_customer_billing->commerce_customer_address->value();
+    }
+  }
+
+  // Pass the billing address values to javacript so they can be included in
+  // the token request to Stripe.
+  $address = array(
+    'address_line1' => !empty($billing_address['thoroughfare']) ? $billing_address['thoroughfare'] : '',
+    'address_line2' => !empty($billing_address['premise']) ? $billing_address['premise'] : '',
+    'address_city' => !empty($billing_address['locality']) ? $billing_address['locality'] : '',
+    'address_state' => !empty($billing_address['administrative_area']) ? $billing_address['administrative_area'] : '',
+    'address_zip' => !empty($billing_address['postal_code']) ? $billing_address['postal_code'] : '',
+    'address_country' => !empty($billing_address['country']) ? $billing_address['country'] : '',
+  );
+  drupal_add_js(array('commerce_stripe_address' => $address), array('type' => 'setting'));
+
+  // Differentiate form elements based on stripe integration type.
+  if ($integration_type == 'stripejs') {
+    $form = _commerce_stripe_credit_card_form();
+
+    // Include the stripe.js from stripe.com.
+    drupal_add_js('https://js.stripe.com/v2/', 'external');
+  }
+  elseif ($integration_type == 'checkout') {
+    $form = array();
+    // Add pay button.
+    $verify_zipcode = !empty($payment_method['settings']['checkout_settings']['verify_zipcode']) ? $payment_method['settings']['checkout_settings']['verify_zipcode'] : 0;
+    $panel_label = !empty($payment_method['settings']['checkout_settings']['panel_label']) ? $payment_method['settings']['checkout_settings']['panel_label'] : 'Checkout';
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+    $order_total = $order_wrapper->commerce_order_total->value();
+
+    // Add Stripe checkout embedding settings.
+    drupal_add_js(array('stripe' => array(
+      'panel_label' => t($panel_label),
+      'currency' => $payment_method['settings']['stripe_currency'],
+      'name' => variable_get('site_name', ''),
+      'verify_zipcode' => ($verify_zipcode) ? TRUE : FALSE,
+      'client_email' => $order->mail,
+      'allow_remember_me' => !empty($payment_method['settings']['checkout_settings']['allow_remember_me']) ? 'true' : 'false',
+      'bitcoin' => !empty($payment_method['settings']['checkout_settings']['bitcoin']) ? 'true' : 'false',
+      'amount' => $order_total['amount'],
+    )), 'setting');
+
+    // Add external checkout.js library.
+    drupal_add_js('https://checkout.stripe.com/checkout.js', 'external');
+  }
+
+  // Add stripe token field. This field is a container for token received from
+  // Stripe API.
+  $form['stripe_token'] = array(
     '#type' => 'hidden',
-    '#value' => field_get_items('commerce_order', $order, 'commerce_order_total_amount'),
-    '#attributes' => array(
-      'name' => '',
-      'class' => array('stripe-order-total'),
-    ),
+    '#attributes' => array('id' => 'stripe_token'),
+    '#default_value' => !empty($pane_values['stripe_token']) ? $pane_values['stripe_token'] : '',
   );
 
-  // Set our key to settings array.
-  drupal_add_js(array('stripe' => array('publicKey' => $payment_method['settings']['public_key'])), 'setting');
 
-  // Include the stripe.js from stripe.com.
-  drupal_add_js('https://js.stripe.com/v1/', 'external');
+  // Set our key to settings array.
+  drupal_add_js(
+    array(
+      'stripe' => array(
+        'publicKey' => $payment_method['settings']['public_key'],
+        'integration_type' => $integration_type,
+      ),
+    ),
+    'setting'
+  );
 
   // Load commerce_stripe.js.
   $form['#attached']['js'] = array(
@@ -186,7 +380,7 @@ function _commerce_stripe_credit_card_field_remove_name($content, $element) {
  */
 function commerce_stripe_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $charge) {
   // If instructed to do so, try using the specified card on file.
-  if (module_exists('commerce_cardonfile') && $payment_method['settings']['cardonfile'] &&
+  if (module_exists('commerce_cardonfile') && !empty($payment_method['settings']['cardonfile']) &&
     !empty($pane_values['cardonfile']) && $pane_values['cardonfile'] !== 'new') {
     $card_data = commerce_cardonfile_load($pane_values['cardonfile']);
     if (empty($card_data) || $card_data->status == 0) {
@@ -205,74 +399,64 @@ function commerce_stripe_submit_form_submit($payment_method, $pane_form, $pane_v
 
   // Begin assembling charge parameters.
   Stripe::setApiKey($payment_method['settings']['secret_key']);
+
+  $currency_code = $payment_method['settings']['stripe_currency'];
+  if(isset($charge['currency_code'])){
+    $currency_code = $charge['currency_code'];
+  }
   $c = array(
     'amount' => $charge['amount'],
-    'currency' => $payment_method['settings']['stripe_currency'],
-    'card' => $_POST['stripeToken'],
+    'currency' => $currency_code,
+    'card' => $pane_values['stripe_token'],
     'description' => t('Order Number: @order_number', array('@order_number' => $order->order_number)),
   );
-
+  commerce_stripe_add_metadata($c, $order);
   // To later store the card with all required fields, carry out necessary steps before making the charge request.
   if (module_exists('commerce_cardonfile') && !empty($payment_method['settings']['cardonfile']) &&
     !empty($pane_values['credit_card']['cardonfile_store']) && $pane_values['credit_card']['cardonfile_store']) {
-    $save_card = TRUE;
-    // If there is no existing customer id, use the Stripe form token to create one.
-    $stripe_customer_id = commerce_stripe_customer_id($order->uid, $payment_method['instance_id']);
-    if (!$stripe_customer_id) {
-      $account = user_load($order->uid);
-      try {
-        $customer = Stripe_Customer::create(array(
-          'card' => $_POST['stripeToken'],
-          'email' => $account->mail,
-        ));
-        $stripe_customer_id = $customer->id;
-        // Use the newly created customer id for the subsequent charge request.
-        $c['customer'] = $stripe_customer_id;
-        unset($c['card']);
-      }
-      catch (Exception $e) {
-        drupal_set_message(t('We received the following error processing your card: %error. Please enter your information again or try a different card.', array('%error' => $e->getMessage())), 'error');
-        watchdog('commerce_stripe', 'Following error received when creating Stripe customer: @stripe_error.', array('@stripe_error' => $e->getMessage()), WATCHDOG_NOTICE);
-        return FALSE;
-      }
-    }
-    // If the customer id already existed, use the Stripe form token to create the new card.
-    else {
-      try {
-        $customer = Stripe_Customer::retrieve($stripe_customer_id);
-        $response = $customer->cards->create(array('card' => $_POST['stripeToken']));
-        $stripe_card_id = $response->id;
-        // Now both the customer id and card id are available.  Add them both to the charge parameters.
-        // The card id is needed so that the customer's default card (which may be different) is not charged instead.
-        $c['card'] = $stripe_card_id;
-        $c['customer'] = $stripe_customer_id;
-      }
-      catch (Exception $e) {
-        drupal_set_message(t('We received the following error processing your card: %error. Please enter your information again or try a different card.', array('%error' => $e->getMessage())), 'error');
-        watchdog('commerce_stripe', 'Following error received when adding a card to customer: @stripe_error.', array('@stripe_error' => $e->getMessage()), WATCHDOG_NOTICE);
-        return FALSE;
-      }
+    $card = _commerce_stripe_create_card($pane_values['stripe_token'], $order->uid, $payment_method);
+
+    // If the card is not declined or otherwise is error-free, we can save it.
+    if ($card && !empty($card->id)) {
+      $stripe_card_id = $card->id;
+      $stripe_customer_id = $card->customer;
+      $c['card'] = $stripe_card_id;
+      $c['customer'] = $stripe_customer_id;
+      $save_card = TRUE;
     }
   }
 
   $transaction = commerce_payment_transaction_new('commerce_stripe', $order->order_id);
   $transaction->instance_id = $payment_method['instance_id'];
   $transaction->amount = $charge['amount'];
-  $transaction->currency_code = $charge['currency_code'];
+  $transaction->currency_code = $currency_code;
   try {
-    $response = Stripe_Charge::create($c);
-    $transaction->remote_id = $response->id;
-    $transaction->payload[REQUEST_TIME] = $response->__toJSON();
-    $transaction->message = t('Payment completed successfully.');
-    $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-    commerce_payment_transaction_save($transaction);
+    // Stripe does not appreciate $0 transfers.
+    if ($charge['amount'] > 0) {
+      $response = Stripe_Charge::create($c);
+      $transaction->remote_id = $response->id;
+      $transaction->payload[REQUEST_TIME] = $response->__toJSON();
+      $transaction->message = t('Payment completed successfully.');
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      commerce_payment_transaction_save($transaction);
+      if (property_exists($response, 'card')) {
+        $card_response = $response->card;
+      }
+      else {
+        $card_response = $response->source;
+      }
+    }
+    // If the total is $0 we just put the card on file.
+    else {
+      $card_response = $card;
+    }
   }
   catch (Exception $e) {
     drupal_set_message(t('We received the following error processing your card. Please enter your information again or try a different card.'), 'error');
     drupal_set_message(check_plain($e->getMessage()), 'error');
     watchdog('commerce_stripe', 'Following error received when processing card @stripe_error.', array('@stripe_error' => $e->getMessage()), WATCHDOG_NOTICE);
     $transaction->remote_id = $e->getHttpStatus();
-    $transaction->payload[REQUEST_TIME] = $e->json_body;
+    $transaction->payload[REQUEST_TIME] = $e->jsonBody;
     $transaction->message = t('Card processing error: @stripe_error', array('@stripe_error' => $e->getMessage()));
     $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
     commerce_payment_transaction_save($transaction);
@@ -281,41 +465,98 @@ function commerce_stripe_submit_form_submit($payment_method, $pane_form, $pane_v
 
   // If so instructed by the customer, save the card.
   if (!empty($save_card)) {
-    // If the customer id was created above, need to fetch the card id from the subsquent charge.
-    if (!isset($stripe_card_id)) {
-      $stripe_card_id = $response->card->id;
-    }
-
-/**
-    // Try fetching the name to store with the card from the billing pane.
-    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
-    if ($order_wrapper->commerce_customer_billing->value()) {
-      $billing_address = $order_wrapper->commerce_customer_billing->commerce_customer_address->value();
-     }
-    else {
-      $billing_address = array();
-    }
- *
- */
-
-    // Store the Stripe customer and card ids in the remote id field of {commerce_cardonfile} table
-    $remote_id = (string) $stripe_customer_id . '|' . (string) $stripe_card_id;
-
-    // Populate and save the card
-    $card_data = commerce_cardonfile_new();
-    $card_data->uid = $order->uid;
-    $card_data->payment_method = $payment_method['method_id'];
-    $card_data->instance_id = $payment_method['instance_id'];
-    $card_data->remote_id = $remote_id;
-    $card_data->card_type = $response->card->type;
-    $card_data->card_name = $response->card->name;
-    $card_data->card_number = $response->card->last4;
-    $card_data->card_exp_month = $response->card->exp_month;
-    $card_data->card_exp_year = $response->card->exp_year;
-    $card_data->status = 1;
-    commerce_cardonfile_save($card_data);
-    watchdog('commerce_stripe', 'Stripe Customer Profile @profile_id created and saved to user @uid.', array('@profile_id' => (string) $customer->id, '@uid' => $order->uid));
+    _commerce_stripe_save_cardonfile($card_response, $order->uid, $payment_method, $pane_values['cardonfile_instance_default']);
   }
+}
+
+function _commerce_stripe_create_card($stripe_token, $uid, $payment_method) {
+  if (!commerce_stripe_load_library()) {
+    return FALSE;
+  }
+  Stripe::setApiKey($payment_method['settings']['secret_key']);
+
+  // If there is no existing customer id, use the Stripe form token to create one.
+  $stripe_customer_id = commerce_stripe_customer_id($uid, $payment_method['instance_id']);
+  if (!$stripe_customer_id) {
+    $account = user_load($uid);
+    try {
+      $customer = Stripe_Customer::create(array(
+        'card' => $stripe_token,
+        'email' => $account->mail,
+      ));
+      if (property_exists($customer, 'cards')) {
+        foreach ($customer->cards->data as $card) {
+          if ($card->id == $customer->default_card) {
+            return $card;
+          }
+        }
+      }
+      else {
+        foreach ($customer->sources->data as $card) {
+          if ($card->object == 'card' && $card->id == $customer->default_source) {
+            return $card;
+          }
+        }
+      }
+    }
+    catch (Exception $e) {
+      drupal_set_message(t('We received the following error processing your card: %error. Please enter your information again or try a different card.', array('%error' => $e->getMessage())), 'error');
+      watchdog('commerce_stripe', 'Following error received when creating Stripe customer: @stripe_error.', array('@stripe_error' => $e->getMessage()), WATCHDOG_NOTICE);
+      return FALSE;
+    }
+  }
+  // If the customer id already existed, use the Stripe form token to create the new card.
+  else {
+    try {
+      $customer = Stripe_Customer::retrieve($stripe_customer_id);
+      if (property_exists($customer, 'cards')) {
+        $card = $customer->cards->create(array('card' => $stripe_token));
+      }
+      else {
+        $card = $customer->sources->create(array('card' => $stripe_token));
+      }
+      return $card;
+    }
+    catch (Exception $e) {
+      drupal_set_message(t('We received the following error processing your card: %error. Please enter your information again or try a different card.', array('%error' => $e->getMessage())), 'error');
+      watchdog('commerce_stripe', 'Following error received when adding a card to customer: @stripe_error.', array('@stripe_error' => $e->getMessage()), WATCHDOG_NOTICE);
+      return FALSE;
+    }
+  }
+}
+
+function _commerce_stripe_save_cardonfile($card, $uid, $payment_method, $set_default) {
+  // Store the Stripe customer and card ids in the remote id field of {commerce_cardonfile} table
+  $remote_id = (string) $card->customer . '|' . (string) $card->id;
+
+  // Populate and save the card
+  $card_data = commerce_cardonfile_new();
+  $card_data->uid = $uid;
+  $card_data->payment_method = $payment_method['method_id'];
+  $card_data->instance_id = $payment_method['instance_id'];
+  $card_data->remote_id = $remote_id;
+  $card_data->card_type = $card->type;
+  $card_data->card_name = $card->name;
+  $card_data->card_number = $card->last4;
+  $card_data->card_exp_month = $card->exp_month;
+  $card_data->card_exp_year = $card->exp_year;
+  $card_data->status = 1;
+  $card_data->instance_default = 0;
+
+  if (property_exists($card->type)) {
+    $card_data->card_type = $card->type;
+  }
+  else {
+    $card_data->card_type = $card->brand;
+  }
+
+  commerce_cardonfile_save($card_data);
+
+  if ($set_default) {
+    commerce_cardonfile_set_default_card($card_data->card_id);
+  }
+
+  watchdog('commerce_stripe', 'Stripe Customer Profile @profile_id created and saved to user @uid.', array('@profile_id' => (string) $card->customer, '@uid' => $uid));
 }
 
 /**
@@ -346,7 +587,7 @@ function _commerce_stripe_load_settings($name = NULL) {
   if (commerce_payment_method_load('commerce_stripe') && rules_config_load('commerce_payment_commerce_stripe')) {
     $commerce_stripe_payment_method = commerce_payment_method_instance_load('commerce_stripe|commerce_payment_commerce_stripe');
   }
-  
+
   if (isset($name) && rules_config_load('commerce_payment_commerce_stripe')) {
     $commerce_stripe_payment_method = commerce_payment_method_instance_load('commerce_stripe|commerce_payment_commerce_stripe');
   }
@@ -365,6 +606,7 @@ function _commerce_stripe_load_setting($name, $default_value = NULL) {
 
 /**
  * Card on file callback: background charge payment
+ * TODO: implement proper return codes per commerce payment
  */
 function commerce_stripe_cardonfile_charge($payment_method, $card_data, $order, $charge = NULL) {
   if (!commerce_stripe_load_library()) {
@@ -374,39 +616,131 @@ function commerce_stripe_cardonfile_charge($payment_method, $card_data, $order, 
   // Fetch the customer id and card id from $card_data->remote_id
   list($customer_id, $card_id) = explode('|', $card_data->remote_id);
 
+  $currency_code = $payment_method['settings']['stripe_currency'];
+  if(isset($charge['currency_code'])){
+    $currency_code = $charge['currency_code'];
+  }
+
   // Assemble charge parameters.
   Stripe::setApiKey($payment_method['settings']['secret_key']);
   $c = array(
     'amount' => $charge['amount'],
-    'currency' => $payment_method['settings']['stripe_currency'],
+    'currency' => $currency_code,
     'customer' => $customer_id,
     'card' => $card_id,
     'description' => t('Order Number: @order_number', array('@order_number' => $order->order_number)),
   );
+  commerce_stripe_add_metadata($c, $order);
 
   $transaction = commerce_payment_transaction_new('commerce_stripe', $order->order_id);
   $transaction->instance_id = $payment_method['instance_id'];
   $transaction->amount = $charge['amount'];
-  $transaction->currency_code = $charge['currency_code'];
+  $transaction->currency_code = $currency_code;
 
   try {
-    $response = Stripe_Charge::create($c);
-    $transaction->remote_id = $response->id;
-    $transaction->payload[REQUEST_TIME] = $response->__toJSON();
-    $transaction->message = t('Payment completed successfully.');
-    $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-    commerce_payment_transaction_save($transaction);
-    return TRUE;
+    $lock = __FUNCTION__ .'_'. $order->order_id;
+    if (lock_acquire($lock) && ($charge['amount'] > 0)) {
+      $response = Stripe_Charge::create($c);
+      $transaction->remote_id = $response->id;
+      $transaction->payload[REQUEST_TIME] = $response->__toJSON();
+      $transaction->message = t('Payment completed successfully.');
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      commerce_payment_transaction_save($transaction);
+      lock_release($lock);
+      return TRUE;
+    }
   }
   catch (Exception $e) {
     watchdog('commerce_stripe', 'Following error received when processing card @stripe_error.', array('@stripe_error' => $e->getMessage()), WATCHDOG_NOTICE);
     $transaction->remote_id = $e->getHttpStatus();
-    $transaction->payload[REQUEST_TIME] = $e->json_body;
+    $transaction->payload[REQUEST_TIME] = $e->jsonBody;
     $transaction->message = t('Card processing error: @stripe_error', array('@stripe_error' => $e->getMessage()));
     $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
     commerce_payment_transaction_save($transaction);
+    lock_release($lock);
     return FALSE;
   }
+}
+
+/**
+ * Card on file callback: create form
+ */
+function commerce_stripe_cardonfile_create_form($form, &$form_state, $op, $card_data) {
+  // Pass along information to the validate and submit handlers.
+  $form_state['card_data'] = $card_data;
+  $form_state['op'] = $op;
+
+  // Add stripe token field. This field is a container for token received from
+  // Stripe API's response handler.
+  $form['stripe_token'] = array(
+    '#type' => 'hidden',
+    '#attributes' => array('id' => 'stripe_token'),
+    '#default_value' => !empty($form_state['values']['stripe_token']) ? $form_state['values']['stripe_token'] : '',
+  );
+
+  // Set our key to settings array.
+  drupal_add_js(array('stripe' => array('publicKey' => _commerce_stripe_load_setting('public_key'))), 'setting');
+
+  // Include the stripe.js from stripe.com.
+  drupal_add_js('https://js.stripe.com/v2/', 'external');
+
+  // Load commerce_stripe.js.
+  $form['#attached']['js'] = array(
+    drupal_get_path('module', 'commerce_stripe') . '/commerce_stripe.js',
+  );
+
+  $form['errors'] = array(
+    '#markup' => '<div id="card-errors"></div>'
+  );
+
+  $form += _commerce_stripe_credit_card_form();
+
+  $payment_method = commerce_payment_method_instance_load($card_data->instance_id);
+  $form['credit_card']['cardonfile_instance_default'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use as default card for payments with %method', array('%method' => $payment_method['display_title'])),
+    '#default_value' => FALSE,
+  );
+
+  $available_countries = NULL;
+  if (isset($form_state['input']['country'])) {
+    $available_countries = array($form_state['input']['country'] => NULL);
+  }
+
+  $field = field_info_field('commerce_customer_address');
+  $instance = field_info_instance('commerce_customer_profile', 'commerce_customer_address', 'billing');
+
+  $form['address'] = addressfield_generate(
+    addressfield_default_values($field, $instance, array($available_countries)),
+    array('address' => 'address'),
+    array('mode' => 'form'));
+
+  commerce_stripe_set_addressfield_class_names($form['address']);
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Add card')
+  );
+
+  return $form;
+}
+
+function commerce_stripe_cardonfile_create_form_submit($form, &$form_state) {
+  $card_data = $form_state['card_data'];
+  $payment_method = commerce_payment_method_instance_load($card_data->instance_id);
+  commerce_stripe_cardonfile_create($form, $form_state, $payment_method, $card_data);
+  $form_state['redirect'] = 'user/' . $card_data->uid . '/cards';
+}
+
+/**
+ * Card on file callback: create
+ */
+function commerce_stripe_cardonfile_create($form, &$form_state, $payment_method, $card_data) {
+  $card = _commerce_stripe_create_card($form_state['values']['stripe_token'], $card_data->uid, $payment_method);
+  if (!$card) {
+    return;
+  }
+  _commerce_stripe_save_cardonfile($card, $card_data->uid, $payment_method, $form_state['values']['credit_card']['cardonfile_instance_default']);
 }
 
 /**
@@ -423,7 +757,12 @@ function commerce_stripe_cardonfile_update($form, &$form_state, $payment_method,
   Stripe::setApiKey($payment_method['settings']['secret_key']);
   try {
     $customer = Stripe_Customer::retrieve($customer_id);
-    $card = $customer->cards->retrieve($card_id);
+    if (property_exists($customer, 'cards')) {
+      $card = $customer->cards->retrieve($card_id);
+    }
+    else {
+      $card = $customer->sources->retrieve($card_id);
+    }
     $card->exp_month = $form_state['values']['credit_card']['exp_month'];
     $card->exp_year = $form_state['values']['credit_card']['exp_year'];
     $card->save();
@@ -450,7 +789,12 @@ function commerce_stripe_cardonfile_delete($form, &$form_state, $payment_method,
   Stripe::setApiKey($payment_method['settings']['secret_key']);
   try {
     $customer = Stripe_Customer::retrieve($customer_id);
-    $customer->cards->retrieve($card_id)->delete();
+    if (property_exists($customer, 'card')) {
+      $customer->cards->retrieve($card_id)->delete();
+    }
+    else {
+      $customer->sources->retrieve($card_id)->delete();
+    }
     return TRUE;
   }
   catch (Exception $e) {
@@ -470,6 +814,24 @@ function commerce_stripe_load_library() {
     return FALSE;
   }
   else {
+    $minimum_version = '1.17.1';
+    $maximum_version = '1.18.0';
+    $message = "Commerce Stripe is currently tested with stripe-php library versions @minimum_version through @maximum_version. You are using version @installed_version, and you should @upgrade_or_downgrade.";
+
+    //check that it's not lower than the minimum required version
+    if (version_compare($library['version'], $minimum_version, '<')) {
+      $variables = array('@minimum_version' => $minimum_version, '@maximum_version' => $maximum_version, '@installed_version' => $library['version'], '@upgrade_or_downgrade' => 'upgrade');
+      watchdog('commerce_stripe', $message, $variables, WATCHDOG_WARNING);
+      return FALSE;
+    }
+
+    //check that it's not higher than the maximum tested version
+    elseif (version_compare($library['version'], $maximum_version, '>')) {
+      $variables = array('@minimum_version' => $minimum_version, '@maximum_version' => $maximum_version, '@installed_version' => $library['version'], '@upgrade_or_downgrade' => 'downgrade');
+      watchdog('commerce_stripe', $message, $variables, WATCHDOG_WARNING);
+      return FALSE;
+    }
+
     return TRUE;
   }
 }
@@ -493,4 +855,69 @@ function commerce_stripe_customer_id($uid, $instance_id) {
   }
 
   return !empty($customer_id) ? $customer_id : FALSE;
+}
+
+/**
+ * implements hook_field_widget_WIDGET_TYPE_form_alter
+ *
+ * set unique classes on address input fields to guarantee commerce_stripe.js can find them
+ *
+ * @param $element
+ * @param $form_state
+ * @param $context
+ */
+function commerce_stripe_field_widget_addressfield_standard_form_alter(&$element, &$form_state, $context) {
+  if (!$context['field']['field_name'] == 'commerce_customer_address') {
+    return;
+  }
+  commerce_stripe_set_addressfield_class_names($element);
+}
+
+/**
+ * Sets unique class names on address field form elements so that they can be
+ * picked up by commerce_stripe.js.
+ *
+ * @param $element
+ *   the addressfield form element
+ */
+function commerce_stripe_set_addressfield_class_names(&$element) {
+  if (isset($element['street_block']['thoroughfare'])) {
+    $element['street_block']['thoroughfare']['#attributes']['class'][] = 'commerce-stripe-thoroughfare';
+  }
+  if (isset($element['street_block']['premise'])) {
+    $element['street_block']['premise']['#attributes']['class'][] = 'commerce-stripe-premise';
+  }
+  if (isset($element['locality_block']['locality'])) {
+    $element['locality_block']['locality']['#attributes']['class'][] = 'commerce-stripe-locality';
+  }
+  if (isset($element['locality_block']['administrative_area'])) {
+    $element['locality_block']['administrative_area']['#attributes']['class'][] = 'commerce-stripe-administrative-area';
+  }
+  if (isset($element['locality_block']['postal_code'])) {
+    $element['locality_block']['postal_code']['#attributes']['class'][] = 'commerce-stripe-postal-code';
+  }
+  if (isset($element['country'])) {
+    $element['country']['#attributes']['class'][] = 'commerce-stripe-country';
+  }
+}
+
+/**
+ * Adds a metadata key to an existing information array.
+ *
+ * By default nothing is added here. Third party modules can implement
+ * hook_commerce_stripe_metadata(), documented in commerce_stripe.api.php, to add
+ * metadata. Metadata is useful to pass arbitrary information to Stripe, such as the
+ * order number, information about the items in the cart, etc.
+ *
+ * @param &$c
+ *   An associative array, to which [metadata] => array(...) will be added, in case
+ *   modules define information via the hook_commerce_stripe_metadata() hook.
+ * @param $order
+ *   The commerce order object.
+ */
+function commerce_stripe_add_metadata(&$c, $order) {
+  $metadata = module_invoke_all('commerce_stripe_metadata', $order);
+  if (count($metadata)) {
+    $c['metadata'] = $metadata;
+  }
 }

@@ -40,15 +40,6 @@ function system_requirements($phase) {
       );
     }
   }
-  if (isset($GLOBALS['install_state']['profile_info'])) {
-    $profile_info = $GLOBALS['install_state']['profile_info'];
-  }
-  else {
-    if (!isset($profile)) {
-      $profile = drupal_get_profile();
-    }
-    $profile_info = install_profile_info($profile);
-  }
 
   // Web server information.
   $software = $_SERVER['SERVER_SOFTWARE'];
@@ -74,8 +65,8 @@ function system_requirements($phase) {
     );
   }
 
-  if (version_compare($phpversion, $profile_info['php']) < 0) {
-    $requirements['php']['description'] = $t('Your PHP installation is too old. Drupal requires at least PHP %version.', array('%version' => $profile_info['php']));
+  if (version_compare($phpversion, DRUPAL_MINIMUM_PHP) < 0) {
+    $requirements['php']['description'] = $t('Your PHP installation is too old. Drupal requires at least PHP %version.', array('%version' => DRUPAL_MINIMUM_PHP));
     $requirements['php']['severity'] = REQUIREMENT_ERROR;
     // If PHP is old, it's not safe to continue with the requirements check.
     return $requirements;
@@ -212,16 +203,16 @@ function system_requirements($phase) {
     'value' => $memory_limit == -1 ? t('-1 (Unlimited)') : $memory_limit,
   );
 
-  if (!drupal_check_memory_limit($profile_info['php_memory_limit'], $memory_limit)) {
+  if (!drupal_check_memory_limit(DRUPAL_MINIMUM_PHP_MEMORY_LIMIT, $memory_limit)) {
     $description = '';
     if ($phase == 'install') {
-      $description = $t('Consider increasing your PHP memory limit to %memory_minimum_limit to help prevent errors in the installation process.', array('%memory_minimum_limit' => $profile_info['php_memory_limit']));
+      $description = $t('Consider increasing your PHP memory limit to %memory_minimum_limit to help prevent errors in the installation process.', array('%memory_minimum_limit' => DRUPAL_MINIMUM_PHP_MEMORY_LIMIT));
     }
     elseif ($phase == 'update') {
-      $description = $t('Consider increasing your PHP memory limit to %memory_minimum_limit to help prevent errors in the update process.', array('%memory_minimum_limit' => $profile_info['php_memory_limit']));
+      $description = $t('Consider increasing your PHP memory limit to %memory_minimum_limit to help prevent errors in the update process.', array('%memory_minimum_limit' => DRUPAL_MINIMUM_PHP_MEMORY_LIMIT));
     }
     elseif ($phase == 'runtime') {
-      $description = $t('Depending on your configuration, Drupal can run with a %memory_limit PHP memory limit. However, a %memory_minimum_limit PHP memory limit or above is recommended, especially if your site uses additional custom or contributed modules.', array('%memory_limit' => $memory_limit, '%memory_minimum_limit' => $profile_info['php_memory_limit']));
+      $description = $t('Depending on your configuration, Drupal can run with a %memory_limit PHP memory limit. However, a %memory_minimum_limit PHP memory limit or above is recommended, especially if your site uses additional custom or contributed modules.', array('%memory_limit' => $memory_limit, '%memory_minimum_limit' => DRUPAL_MINIMUM_PHP_MEMORY_LIMIT));
     }
 
     if (!empty($description)) {
@@ -2863,7 +2854,14 @@ function system_update_7061(&$sandbox) {
         // We will convert filepaths to URI using the default scheme
         // and stripping off the existing file directory path.
         $file['uri'] = $scheme . preg_replace('!^' . preg_quote($basename) . '!', '', $file['filepath']);
-        $file['uri'] = file_stream_wrapper_uri_normalize($file['uri']);
+        // Normalize the URI but don't call file_stream_wrapper_uri_normalize()
+        // directly, since that is a higher-level API function which invokes
+        // hooks while validating the scheme, and those will not work during
+        // the upgrade. Instead, use a simpler version that just assumes the
+        // scheme from above is already valid.
+        if (($file_uri_scheme = file_uri_scheme($file['uri'])) && ($file_uri_target = file_uri_target($file['uri']))) {
+          $file['uri'] = $file_uri_scheme . '://' . $file_uri_target;
+        }
         unset($file['filepath']);
         // Insert into the file_managed table.
         // Each fid should only be stored once in file_managed.

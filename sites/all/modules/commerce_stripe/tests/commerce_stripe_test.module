@@ -1,0 +1,15 @@
+<?php
+/**
+ * @file
+ * This file contains the testing code for this module
+ */
+
+/**
+ * Implements hook_commerce_stripe_metadata().
+ */
+function commerce_stripe_test_commerce_stripe_metadata($order) {
+  return array(
+    'order_number' => $order->order_number,
+    'whatever' => 'test',
+  );
+}

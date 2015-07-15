@@ -6811,6 +6811,20 @@ table .checkbox input[type="checkbox"] {
   top:50%;
   margin-top: -135px;
 }
+
+.masthead .mast-head-2014 .container .logo2015 {
+  width: 235px;
+  height: 235px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.9) url(../images/dca2015-logo.png) center center no-repeat;
+  background-size: 223px;
+  box-shadow: 3px 3px 0 #231f20;
+  position: absolute;
+  left: 20px;
+  top:50%;
+  margin-top: -135px;
+}
+
 .masthead .mast-head-2014 .container .text{
   background: rgba(255,255,255,0.8);
   padding: 20px 50px;
@@ -6963,3 +6977,61 @@ table .checkbox input[type="checkbox"] {
   font-size: 20px;
   margin: 10px 0 20px;
 }
+
+
+
+
+/* Schedule */
+.view-cod-session-schedule ul.quicktabs-tabs.quicktabs-style-zen, .view-cod-bof-schedule ul.quicktabs-tabs.quicktabs-style-zen, .view-cod-schedule ul.quicktabs-tabs.quicktabs-style-zen {
+  background: none; }
+  .view-cod-session-schedule ul.quicktabs-tabs.quicktabs-style-zen li, .view-cod-bof-schedule ul.quicktabs-tabs.quicktabs-style-zen li, .view-cod-schedule ul.quicktabs-tabs.quicktabs-style-zen li {
+    background: #494747;
+    border-radius: 6px;
+    margin-bottom: 20px; }
+    .view-cod-session-schedule ul.quicktabs-tabs.quicktabs-style-zen li.active, .view-cod-bof-schedule ul.quicktabs-tabs.quicktabs-style-zen li.active, .view-cod-schedule ul.quicktabs-tabs.quicktabs-style-zen li.active {
+      background: #615f5e; }
+      .view-cod-session-schedule ul.quicktabs-tabs.quicktabs-style-zen li.active a, .view-cod-bof-schedule ul.quicktabs-tabs.quicktabs-style-zen li.active a, .view-cod-schedule ul.quicktabs-tabs.quicktabs-style-zen li.active a {
+        background: none;
+        color: white;
+        padding-bottom: 4px; }
+    .view-cod-session-schedule ul.quicktabs-tabs.quicktabs-style-zen li a, .view-cod-bof-schedule ul.quicktabs-tabs.quicktabs-style-zen li a, .view-cod-schedule ul.quicktabs-tabs.quicktabs-style-zen li a {
+      background: none;
+      color: white;
+      padding-bottom: 4px; }
+.view-cod-session-schedule .views-field-field-slot-datetime-1, .view-cod-session-schedule .views-field-field-evttime-date-1, .view-cod-bof-schedule .views-field-field-slot-datetime-1, .view-cod-bof-schedule .views-field-field-evttime-date-1, .view-cod-schedule .views-field-field-slot-datetime-1, .view-cod-schedule .views-field-field-evttime-date-1 {
+  background: #326294;
+  clear: both;
+  color: white;
+  padding: 15px;
+  font-weight: bold;
+  text-align: center;
+  border-radius: 6px; }
+.view-cod-session-schedule .views-row, .view-cod-bof-schedule .views-row, .view-cod-schedule .views-row {
+  border-bottom: 1px solid #CCCCCC;
+  clear: both;
+  float: left;
+  padding-bottom: 20px;
+  padding-top: 24px;
+  width: 100%; }
+  .view-cod-session-schedule .views-row.views-row-last, .view-cod-bof-schedule .views-row.views-row-last, .view-cod-schedule .views-row.views-row-last {
+    border-bottom: none; }
+.view-cod-session-schedule .views-field-field-experience, .view-cod-bof-schedule .views-field-field-experience, .view-cod-schedule .views-field-field-experience {
+  float: right; }
+.view-cod-session-schedule .views-field-title, .view-cod-bof-schedule .views-field-title, .view-cod-schedule .views-field-title {
+  font-weight: bold;
+  font-size: 1.2em;
+  margin-bottom: 20px; }
+  .view-cod-session-schedule .views-field-title a, .view-cod-bof-schedule .views-field-title a, .view-cod-schedule .views-field-title a {
+    text-decoration: none; }
+.view-cod-session-schedule .views-field-room, .view-cod-session-schedule .views-field-name, .view-cod-session-schedule .views-field-field-speakers, .view-cod-session-schedule .views-field-field-session-track, .view-cod-bof-schedule .views-field-room, .view-cod-bof-schedule .views-field-name, .view-cod-bof-schedule .views-field-field-speakers, .view-cod-bof-schedule .views-field-field-session-track, .view-cod-schedule .views-field-room, .view-cod-schedule .views-field-name, .view-cod-schedule .views-field-field-speakers, .view-cod-schedule .views-field-field-session-track {
+  float: left;
+  height: 28px;
+  margin: 0 20px 10px 0;
+  padding-top: 4px;
+  padding-left: 30px; }
+.view-cod-session-schedule .views-field-room, .view-cod-session-schedule .views-field-name, .view-cod-bof-schedule .views-field-room, .view-cod-bof-schedule .views-field-name, .view-cod-schedule .views-field-room, .view-cod-schedule .views-field-name {
+  background: url(../images/location.png) transparent center left no-repeat; }
+.view-cod-session-schedule .views-field-field-speakers, .view-cod-bof-schedule .views-field-field-speakers, .view-cod-schedule .views-field-field-speakers {
+  background: url(../images/speaker.png) transparent center left no-repeat; }
+.view-cod-session-schedule .views-field-field-session-track, .view-cod-bof-schedule .views-field-field-session-track, .view-cod-schedule .views-field-field-session-track {
+  background: url(../images/track.png) transparent center left no-repeat; }
