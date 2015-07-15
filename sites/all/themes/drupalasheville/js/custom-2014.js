@@ -20,8 +20,6 @@
         var logoSize = (223 - (scrollTopValue * 0.9));
         var logoLeft = (20 + (scrollTopValue * 0.5));
         
-        console.log(logoLeft);
-        
         $masthead2014.css({
           'background-size': (100 - (scrollTopValue * 0.5)) + '%',
           '-webkit-filter': 'blur(' + mastBlur + ')',
