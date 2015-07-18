@@ -12,6 +12,7 @@
 define('COMMERCE_CART_REFRESH_ALWAYS', 'always');
 define('COMMERCE_CART_REFRESH_OWNER_ONLY', 'owner_only');
 define('COMMERCE_CART_REFRESH_ACTIVE_CART_ONLY', 'active_cart_only');
+define('COMMERCE_CART_REFRESH_DEFAULT_FREQUENCY', 15);
 
 /**
  * Implements hook_menu().
@@ -106,7 +107,7 @@ function commerce_cart_order_refresh_form_access($order) {
 
   // Returns TRUE if the link is enabled via the order settings form and the
   // user has access to update the order.
-  return variable_get('commerce_order_apply_pricing_rules_link', TRUE) && commerce_order_access('update', 3);
+  return variable_get('commerce_order_apply_pricing_rules_link', TRUE) && commerce_order_access('update', $order);
 }
 
 /**
@@ -362,7 +363,7 @@ function commerce_cart_form_commerce_order_settings_form_alter(&$form, &$form_st
   $form['cart_refresh'] = array(
     '#type' => 'fieldset',
     '#title' => t('Shopping cart refresh'),
-    '#description' => t('Shopping cart orders comprise orders in shopping cart and some checkout related order statuses. These settings let you control the shopping cart orders are refreshed, the process during which product prices are recalculated, to improve site performance in the case of excessive refreshes on sites with less dynamic pricing needs.'),
+    '#description' => t('Shopping cart orders comprise orders in shopping cart and some checkout related order statuses. These settings let you control how the shopping cart orders are refreshed, the process during which product prices are recalculated, to improve site performance in the case of excessive refreshes on sites with less dynamic pricing needs.'),
     '#weight' => 40,
   );
   $form['cart_refresh']['commerce_cart_refresh_mode'] = array(
@@ -379,7 +380,7 @@ function commerce_cart_form_commerce_order_settings_form_alter(&$form, &$form_st
     '#type' => 'textfield',
     '#title' => t('Shopping cart refresh frequency'),
     '#description' => t('Shopping carts will only be refreshed if more than the specified number of seconds have passed since they were last refreshed.'),
-    '#default_value' => variable_get('commerce_cart_refresh_frequency', 30),
+    '#default_value' => variable_get('commerce_cart_refresh_frequency', COMMERCE_CART_REFRESH_DEFAULT_FREQUENCY),
     '#required' => TRUE,
     '#size' => 32,
     '#field_suffix' => t('seconds'),
@@ -663,7 +664,7 @@ function commerce_cart_block_view($delta) {
         // Build the variables array to send to the cart block template.
         $variables = array(
           'order' => $order,
-          'contents_view' => commerce_embed_view('commerce_cart_block', 'defaults', array($order->order_id), $_GET['q']),
+          'contents_view' => commerce_embed_view('commerce_cart_block', 'default', array($order->order_id), $_GET['q']),
         );
 
         $content = theme('commerce_cart_block', $variables);
@@ -721,7 +722,7 @@ function commerce_cart_order_can_refresh($order) {
   }
 
   // Check to see if the last cart refresh happened long enough ago.
-  $seconds = variable_get('commerce_cart_refresh_frequency', 15);
+  $seconds = variable_get('commerce_cart_refresh_frequency', COMMERCE_CART_REFRESH_DEFAULT_FREQUENCY);
 
   if (!empty($seconds) && !empty($order->data['last_cart_refresh']) &&
     REQUEST_TIME - $order->data['last_cart_refresh'] < $seconds) {
@@ -2235,6 +2236,7 @@ function commerce_cart_add_to_cart_form($form, &$form_state, $line_item, $show_q
   // form with form IDs based on the $product_ids.
   $form['#validate'][] = 'commerce_cart_add_to_cart_form_validate';
   $form['#submit'][] = 'commerce_cart_add_to_cart_form_submit';
+  $form['#after_build'][] = 'commerce_cart_add_to_cart_form_after_build';
 
   return $form;
 }
@@ -2286,7 +2288,8 @@ function commerce_cart_add_to_cart_form_attributes_refresh($form, $form_state) {
   // Then render and return the various product fields that might need to be
   // updated on the page.
   if (!empty($form_state['context'])) {
-    $product = $form_state['default_product'];
+    $product = commerce_product_load($form_state['default_product_id']);
+    $form_state['default_product'] = $product;
     $product->display_context = $form_state['context'];
 
     // First render the actual fields attached to the referenced product.
@@ -2420,6 +2423,18 @@ function commerce_cart_add_to_cart_form_submit($form, &$form_state) {
       drupal_set_message(t('%title could not be added to your cart.', array('%title' => $product->title)), 'error');
     }
   }
+}
+
+/**
+ * After build callback for the Add to Cart form.
+ */
+function commerce_cart_add_to_cart_form_after_build(&$form, &$form_state) {
+  // Remove the default_product entity to mitigate cache_form bloat and performance issues.
+  if (isset($form_state['default_product'])) {
+    $form_state['default_product_id'] = $form_state['default_product']->product_id;
+    unset($form_state['default_product']);
+  }
+  return $form;
 }
 
 /**
