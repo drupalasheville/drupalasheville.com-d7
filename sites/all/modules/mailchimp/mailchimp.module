@@ -21,11 +21,11 @@ function mailchimp_libraries_info() {
   $libraries['mailchimp'] = array(
     'name' => 'MailChimp MCAPI',
     'vendor url' => 'http://apidocs.mailchimp.com/api/2.0',
-    'download url' => 'https://bitbucket.org/mailchimp/mailchimp-api-php/get/2.0.4.zip',
+    'download url' => 'https://bitbucket.org/mailchimp/mailchimp-api-php/get/2.0.6.zip',
     'path' => 'src',
     'version arguments' => array(
       'file' => 'composer.json',
-      // Version 2.0.4
+      // Version 2.0.6
       'pattern' => '/\"version": \"((\d+)\.(\d+)\.(\d+))\",/',
     ),
     'files' => array(
@@ -111,26 +111,27 @@ function mailchimp_get_api_object() {
     return $mailchimp;
   }
 
+  // We allow the class name to be overridden, following the example of core's
+  // mailsystem, in order to use alternate MailChimp classes. The bundled tests
+  // use this approach to extend the MailChimp class with a test server.
+  $classname = variable_get('mailchimp_api_classname', 'DrupalMailchimp');
+
   $library = libraries_load('mailchimp');
-  if (!$library['installed']) {
+  if (!$library['installed'] && ($classname != 'MailChimpTest')) {
     $msg = t('Failed to load MailChimp PHP library. Please refer to the installation requirements.');
-    watchdog('mailchimp', $msg, NULL, WATCHDOG_ERROR);
+    watchdog('mailchimp', $msg, array(), WATCHDOG_ERROR);
     drupal_set_message($msg, 'error');
     return NULL;
   }
 
   $api_key = variable_get('mailchimp_api_key', '');
   if (!strlen($api_key)) {
-    watchdog('mailchimp', 'Mailchimp Error: API Key cannot be blank.', NULL, WATCHDOG_ERROR);
+    watchdog('mailchimp', 'Mailchimp Error: API Key cannot be blank.', array(), WATCHDOG_ERROR);
     return NULL;
   }
   // Set the timeout to something that won't take down the Drupal site:
   $options = array('timeout' => 60);
 
-  // We allow the class name to be overridden, following the example of core's
-  // mailsystem, in order to use alternate MailChimp classes. The bundled tests
-  // use this approach to extend the MailChimp class with a test server.
-  $classname = variable_get('mailchimp_api_classname', 'DrupalMailchimp');
   $mailchimp = new $classname($api_key, $options);
 
   return $mailchimp;
@@ -172,6 +173,9 @@ function mailchimp_get_lists($list_ids = array(), $reset = FALSE) {
   else {
     try {
       $mcapi = mailchimp_get_api_object();
+      if (!$mcapi) {
+        throw new MailchimpException('Cannot get lists without Mailchimp API. Check API key has been entered.');
+      }
       $result = $mcapi->lists->getList(array(), 0, 100);
       if ($result['total'] > 0) {
         foreach ($result['data'] as $list) {
@@ -258,6 +262,9 @@ function mailchimp_get_mergevars($list_ids, $reset = FALSE) {
     $mcapi = mailchimp_get_api_object();
     $last_list_id = NULL;
     try {
+      if (!$mcapi) {
+        throw new MailchimpException('Cannot get merge vars without Mailchimp API. Check API key has been entered.');
+      }
       $result = $mcapi->lists->mergeVars($list_ids);
       if ($result['success_count']) {
         foreach ($result['data'] as $list_mergevars) {
@@ -306,6 +313,9 @@ function mailchimp_get_memberinfo($list_id, $email, $reset = FALSE) {
   $memberinfo = array();
   $mcapi = mailchimp_get_api_object();
   try {
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot get member info without Mailchimp API. Check API key has been entered.');
+    }
     $result = $mcapi->lists->memberInfo($list_id, array(array('email' => $email)));
     if ($result['success_count']) {
       $memberinfo = reset($result['data']);
@@ -362,8 +372,8 @@ function mailchimp_subscribe($list_id, $email, $merge_vars = NULL, $double_optin
       'list_id' => $list_id,
       'email' => $email,
       'merge_vars' => $merge_vars,
-      'format' => $format,
       'double_optin' => $double_optin,
+      'format' => $format,
       'update_existing' => $update_existing,
       'replace_interests' => $replace_interests,
       'confirm' => $confirm,
@@ -386,6 +396,9 @@ function mailchimp_subscribe_process($list_id, $email, $merge_vars = NULL, $doub
   $result = FALSE;
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot subscribe to list without Mailchimp API. Check API key has been entered.');
+    }
     $result = $mcapi->lists->subscribe($list_id, array('email' => $email), $merge_vars, $format, $double_optin, $update_existing, $replace_interests, $confirm);
     if (isset($result['email'])) {
       module_invoke_all('mailchimp_subscribe_user', $list_id, $email, $merge_vars);
@@ -443,7 +456,7 @@ function mailchimp_addto_queue($function, $args) {
  * @return bool
  *   Success or failure.
  */
-function mailchimp_update_member($list_id, $email, $merge_vars, $format = '', $replace_interests = TRUE) {
+function mailchimp_update_member($list_id, $email, $merge_vars, $format = 'html', $replace_interests = TRUE) {
   if (variable_get('mailchimp_cron', FALSE)) {
     $args = array(
       'list_id' => $list_id,
@@ -469,7 +482,10 @@ function mailchimp_update_member($list_id, $email, $merge_vars, $format = '', $r
 function mailchimp_update_member_process($list_id, $email, $merge_vars, $format, $replace_interests) {
   $result = FALSE;
   try {
-    $mcapi = $mcapi = mailchimp_get_api_object();
+    $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot update member without Mailchimp API. Check API key has been entered.');
+    }
     $result = $mcapi->lists->updateMember($list_id, array('email' => $email), $merge_vars, $format, $replace_interests);
     if (isset($result['email'])) {
       watchdog('mailchimp', '@email was updated in list @list_id.', array(
@@ -507,6 +523,9 @@ function mailchimp_get_members($list_id, $status = 'subscribed', $options = arra
   if (lock_acquire('mailchimp_get_members', 60)) {
     try {
       $mcapi = mailchimp_get_api_object();
+      if (!$mcapi) {
+        throw new MailchimpException('Cannot get members without Mailchimp API. Check API key has been entered.');
+      }
       $results = $mcapi->lists->members($list_id, $status, $options);
     }
     catch (Exception $e) {
@@ -531,6 +550,9 @@ function mailchimp_batch_update_members($list_id, $batch, $double_in = FALSE, $u
   $results = FALSE;
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot batch subscribe to list without Mailchimp API. Check API key has been entered.');
+    }
     $results = $mcapi->lists->batchSubscribe($list_id, $batch, $double_in, $update_existing, $replace_interests);
   }
   catch (Exception $e) {
@@ -599,6 +621,9 @@ function mailchimp_unsubscribe_process($list_id, $email, $delete, $goodbye, $not
   $result = FALSE;
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot unsubscribe from list without Mailchimp API. Check API key has been entered.');
+    }
     $result = $mcapi->lists->unsubscribe($list_id, array('email' => $email), $delete, $goodbye, $notify);
     if ($result) {
       module_invoke_all('mailchimp_unsubscribe_user', $list_id, $email);
@@ -638,6 +663,9 @@ function mailchimp_get_segments($list_id, $reset = NULL) {
   $segments = array();
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot get list segments without Mailchimp API. Check API key has been entered.');
+    }
     $segments = $mcapi->lists->segments($list_id);
     cache_set($list_id . '-segments', $segments, 'cache_mailchimp', CACHE_TEMPORARY);
   }
@@ -669,6 +697,9 @@ function mailchimp_segment_create($list_id, $name, $type, $segment_options = NUL
   $segment_id = FALSE;
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot add list segment without Mailchimp API. Check API key has been entered.');
+    }
     $options = array(
       'type' => $type,
       'name' => $name,
@@ -753,6 +784,9 @@ function mailchimp_segment_batch_add_subscribers($list_id, $segment_id, $batch) 
   $count = 0;
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot batch add segment subscribers without Mailchimp API. Check API key has been entered.');
+    }
     $results = $mcapi->lists->staticSegmentMembersAdd($list_id, $segment_id, $batch);
     $count = isset($results['success_count']) ? $results['success_count'] : 0;
   }
@@ -789,6 +823,9 @@ function mailchimp_get_campaign_data($campaign_id, $reset = FALSE) {
 
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot get list without Mailchimp API. Check API key has been entered.');
+    }
     $filters = array(
       'campaign_id' => $campaign_id,
     );
@@ -825,6 +862,9 @@ function mailchimp_get_campaign_data($campaign_id, $reset = FALSE) {
 function mailchimp_get_campaigns_for_email($email) {
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot get campaigns without Mailchimp API. Check API key has been entered.');
+    }
     $campaign_list = $mcapi->helper->campaignsForEmail(array('email' => $email));
   }
   catch (Exception $e) {
@@ -851,6 +891,9 @@ function mailchimp_get_campaigns_for_email($email) {
 function mailchimp_get_lists_for_email($email) {
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot get lists without Mailchimp API. Check API key has been entered.');
+    }
     $lists = $mcapi->helper->listsForEmail(array('email' => $email));
   }
   catch (Exception $e) {
@@ -875,6 +918,9 @@ function mailchimp_get_lists_for_email($email) {
 function mailchimp_webhook_get($list_id) {
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot get webhook without Mailchimp API. Check API key has been entered.');
+    }
     $result = $mcapi->lists->webhooks($list_id);
   }
   catch (Exception $e) {
@@ -896,6 +942,9 @@ function mailchimp_webhook_get($list_id) {
 function mailchimp_webhook_add($list_id, $url, $actions = array(), $sources = array()) {
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot add webhook without Mailchimp API. Check API key has been entered.');
+    }
     $result = $mcapi->lists->webhookAdd($list_id, $url, $actions, $sources);
   }
   catch (Exception $e) {
@@ -917,6 +966,9 @@ function mailchimp_webhook_add($list_id, $url, $actions = array(), $sources = ar
 function mailchimp_webhook_delete($list_id, $url) {
   try {
     $mcapi = mailchimp_get_api_object();
+    if (!$mcapi) {
+      throw new MailchimpException('Cannot delete webhook without Mailchimp API. Check API key has been entered.');
+    }
     $result = $mcapi->lists->webhookDel($list_id, $url);
   }
   catch (Exception $e) {
@@ -977,7 +1029,7 @@ function mailchimp_process_webhook_access($key) {
  * Process a webhook post from MailChimp.
  */
 function mailchimp_process_webhook() {
-  if (!isset($_POST)) {
+  if (empty($_POST)) {
     return "Mailchimp Webhook Endpoint.";
   }
   $data = $_POST['data'];
@@ -1143,6 +1195,42 @@ function mailchimp_insert_drupal_form_tag($mergevar) {
   );
 
   switch ($mergevar['field_type']) {
+    case 'address':
+      // Sub-array of address elements according to MailChimp specs.
+      // https://apidocs.mailchimp.com/api/2.0/lists/subscribe.php
+      $input['#type'] = 'container';
+      $input['#tree'] = TRUE;
+      $input['addr1'] = array(
+        '#title' => t('Address 1'),
+        '#type' => 'textfield',
+      );
+      $input['addr2'] = array(
+        '#title' => t('Address 2'),
+        '#type' => 'textfield',
+      );
+      $input['city'] = array(
+        '#title' => t('City'),
+        '#type' => 'textfield',
+      );
+      $input['state'] = array(
+        '#title' => t('State'),
+        '#type' => 'textfield',
+        '#size' => 2,
+        '#maxlength' => 2,
+      );
+      $input['zip'] = array(
+        '#title' => t('Zip'),
+        '#type' => 'textfield',
+        '#size' => 6,
+        '#maxlength' => 6,
+      );
+      $input['country'] = array(
+        '#title' => t('Country'),
+        '#type' => 'textfield',
+        '#size' => 2,
+        '#maxlength' => 2,
+      );
+      break;
     case 'dropdown':
       // Dropdown is mapped to <select> element in Drupal Form API.
       $input['#type'] = 'select';
@@ -1223,4 +1311,70 @@ function mailchimp_cron() {
       $count++;
     }
   }
+}
+
+/**
+ * Implements hook_variable_group_info().
+ */
+function mailchimp_variable_group_info() {
+  $groups['mailchimp'] = array(
+    'title' => t('Mailchimp'),
+    'description' => t('Settings related to Mailchimp.'),
+    'access' => 'administer mailchimp',
+    'path' => array('admin/config/services/mailchimp'),
+  );
+  return $groups;
+}
+
+/**
+ * Implements hook_variable_info().
+ */
+function mailchimp_variable_info($options) {
+  $variable['mailchimp_api_key'] = array(
+    'title' => t('Mailchimp API Key', array(), $options),
+    'group' => 'mailchimp',
+  );
+  $variable['mailchimp_cron'] = array(
+    'title' => t('Use batch processing', array(), $options),
+    'type' => 'boolean',
+    'group' => 'mailchimp',
+    'default' => FALSE,
+  );
+  $variable['mailchimp_batch_limit'] = array(
+    'title' => t('Batch limit', array(), $options),
+    'type' => 'number',
+    'group' => 'mailchimp',
+    'default' => 100,
+  );
+
+  return $variable;
+}
+
+/**
+ * Replace an array of merge field placeholder tokens with their values.
+ *
+ * @param array $mergefields
+ *   An array of merge fields and token place holders to be expanded. The key
+ *   of the array is the MailChimp field name, the value is the token that
+ *   should be expanded.
+ * @param object $entity
+ *   The entity that contains the values to use for token replacement.
+ * @param string $entity_type
+ *   The entity type of the entity being used.
+ *
+ * @return mixed
+ *   Associative array of MailChimp fields with values taken from the provided
+ *   entity.
+ */
+function mailchimp_mergevars_populate($mergefields, $entity, $entity_type) {
+  $mergevars = drupal_static(__FUNCTION__, array());
+  list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+
+  if (!isset($mergevars[$bundle . ':' . $id])) {
+    foreach ($mergefields as $key => $token) {
+      $mergevars[$bundle . ':' . $id][$key] = token_replace($token, array($entity_type => $entity), array('clear' => TRUE));
+    }
+  }
+
+  return $mergevars[$bundle . ':' . $id];
 }
