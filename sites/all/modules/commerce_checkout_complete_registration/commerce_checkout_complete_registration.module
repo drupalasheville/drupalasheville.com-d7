@@ -1,0 +1,243 @@
+<?php
+/**
+ * @file
+ * Code for the Commerce Checkout Complete Registration module.
+ */
+
+/**
+ * Implements hook_default_rules_configuration_alter().
+ *
+ * Remove the Drupal Commerce "Create a new account for an anonymous order" rule,
+ * This module replace this approach with its own - Register on Checkout complete.
+ */
+function commerce_checkout_complete_registration_default_rules_configuration_alter(&$configs) {
+  unset($configs['commerce_checkout_new_account']);
+}
+
+/**
+ * Implements hook_commerce_checkout_pane_info().
+ */
+function commerce_checkout_complete_registration_commerce_checkout_pane_info() {
+  $checkout_panes = array();
+
+  $checkout_panes['commerce_checkout_complete_registration'] = array(
+    'title' => t('Create account for anonymous checkout'),
+    'base' => 'commerce_checkout_complete_registration_confirmation_pane',
+    'page' => 'complete',
+  );
+
+  return $checkout_panes;
+}
+
+/**
+ * Checkout pane callback: returns the settings form elements for the registration
+ * confirmation.
+ */
+function commerce_checkout_complete_registration_confirmation_pane_settings_form($checkout_pane) {
+  $form = array();
+
+  // Password required setting.
+  $form['commerce_checkout_registration_password_required'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Set the password?'),
+    '#description' => t('It will add the password form elements to this pane.'),
+    '#default_value' => variable_get('commerce_checkout_registration_password_required', FALSE),
+  );
+
+  // Notify user for account creation.
+  $form['commerce_checkout_registration_account_notification'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Notify user about account creation?'),
+    '#description' => t('It will send the account creation notification email.'),
+    '#default_value' => variable_get('commerce_checkout_registration_account_notification', FALSE),
+  );
+
+  $confirmation_text = variable_get('commerce_checkout_registration_confirmation_text', commerce_checkout_complete_registration_confirmation_text_default());
+
+  $form['container'] = array(
+    '#type' => 'container',
+    '#access' => filter_access(filter_format_load($confirmation_text['format'])),
+  );
+  $form['container']['commerce_checkout_registration_confirmation_text'] = array(
+    '#type' => 'text_format',
+    '#title' => t('Register confirmation text.'),
+    '#default_value' => $confirmation_text['value'],
+    '#format' => $confirmation_text['format'],
+  );
+
+  $var_info = array(
+    'site' => array(
+      'type' => 'site',
+      'label' => t('Site information'),
+      'description' => t('Site-wide settings and other global information.'),
+    ),
+    'commerce_order' => array(
+      'label' => t('Order'),
+      'type' => 'commerce_order',
+    ),
+  );
+
+  $form['container']['commerce_checkout_registration_confirmation_text_help'] = RulesTokenEvaluator::help($var_info);
+
+  return $form;
+}
+
+/**
+ * Checkout pane callback: returns the cart contents View for inclusion in the
+ *   checkout form.
+ */
+function commerce_checkout_complete_registration_confirmation_pane_checkout_form($form, &$form_state, $checkout_pane, $order) {
+  $pane_form = array();
+  global $user;
+  // Nothing to do for the authenticated users, or existing.
+  if ($user->uid || empty($order->mail) || (!empty($order->mail) && user_load_by_mail($order->mail))) {
+    return $pane_form;
+  }
+
+  // Load the confirmation text.
+  $confirmation_text = variable_get('commerce_checkout_registration_confirmation_text', commerce_checkout_complete_registration_confirmation_text_default());
+  if (!empty($confirmation_text['value'])) {
+    // Perform translation.
+    $confirmation_text['value'] = commerce_i18n_string('commerce:checkout:commerce_checkout_complete_registration:confirmation_text', $confirmation_text['value'], array('sanitize' => FALSE));
+
+    // Perform token replacement.
+    $confirmation_text['value'] = token_replace($confirmation_text['value'], array('commerce-order' => $order), array('clear' => TRUE));
+
+    // Apply the proper text format.
+    $confirmation_text['value'] = check_markup($confirmation_text['value'], $confirmation_text['format']);
+
+    $pane_form['confirmation_text'] = array(
+      '#markup' => '<div class="checkout-registration-confirmation-text">' . $confirmation_text['value'] . '</div>',
+    );
+  }
+
+  // Display password form elements.
+  if (variable_get('commerce_checkout_registration_password_required', FALSE)) {
+    $pane_form['pass'] = array(
+      '#type' => 'password_confirm',
+      '#size' => 25,
+      '#description' => t('Provide a password for the new account in both fields.'),
+      '#required' => TRUE,
+      '#element_validate' => array('commerce_checkout_complete_registration_pane_checkout_form_pass_validate'),
+    );
+  }
+
+  $pane_form['submit'] = array(
+    '#type' => 'submit',
+    '#submit' => array('commerce_checkout_complete_registration_confirmation_pane_checkout_form_submit'),
+    '#value' => t('Create my account'),
+  );
+  $form_state['#pane'] = $checkout_pane;
+  return $pane_form;
+}
+
+/**
+ * Validate callback for the checkout pane form.
+ */
+function commerce_checkout_complete_registration_pane_checkout_form_pass_validate($element, &$form_state, &$form) {
+  // LoginToboggan password validation.
+  if (module_exists('logintoboggan')) {
+    $array_parents = array_slice($element['#parents'], 0, -1);
+    $pass_value = drupal_array_get_nested_value($form_state['values'], array_merge($array_parents, array('pass')));
+    if (!empty($pass_value)) {
+      // LoginToboggan validation.
+      $pass_err = logintoboggan_validate_pass($pass_value);
+      if ($pass_err) {
+        form_set_error(implode('][', array_merge($array_parents, array('pass'))), $pass_err);
+      }
+    }
+  }
+}
+
+/**
+ * Checkout pane callback: create new account, assign the order to the new user,
+ * invoke rules for this event for extra user & order alterations.
+ */
+function commerce_checkout_complete_registration_confirmation_pane_checkout_form_submit($form, &$form_state) {
+  global $user;
+
+  $order = $form_state['order'];
+
+  // Nothing to do for the authenticated users, or existing.
+  if (!user_is_logged_in()) {
+    // Set the new account data.
+    $name = $order->mail;
+    $mail = $order->mail;
+    $pass = !empty($form_state['values']['commerce_checkout_complete_registration']['pass']) ? $form_state['values']['commerce_checkout_complete_registration']['pass'] : '';
+    $notify = variable_get('commerce_checkout_registration_account_notification', FALSE);
+
+    // Setup the account fields array and save it as a new user.
+    $fields = array(
+      'name' => $name,
+      'mail' => $mail,
+      'init' => $mail,
+      'pass' => empty($pass) ? user_password(variable_get('commerce_password_length', 8)) : $pass,
+      'roles' => array(),
+      'status' => 1,
+    );
+    $account = user_save('', $fields);
+
+    // Manually set the password so it appears in the e-mail.
+    $account->password = $fields['pass'];
+
+    // Send the customer their account details if enabled.
+    if ($notify) {
+      global $language;
+      // Send the e-mail through the user module.
+      drupal_mail('user', 'register_no_approval_required', $mail, $language, array('account' => $account), commerce_email_from());
+    }
+    $user = $account;
+
+    // Assign the order to the new user.
+    $order->uid = $user->uid;
+    commerce_order_save($order);
+
+    // Assign the order customer profiles to the new user.
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+    foreach (commerce_info_fields('commerce_customer_profile_reference', 'commerce_order') as $field_name => $field) {
+      if ($order_wrapper->__isset($field_name)) {
+        $customer_profile_wrapper = $order_wrapper->{$field_name};
+        $customer_profile_wrapper->uid = $user->uid;
+        $customer_profile_wrapper->save();
+      }
+    }
+
+    // Use this event to do extra operations with Rules to the new account and/or order.
+    rules_invoke_all('commerce_checkout_complete_registration', $user, $order);
+
+    // Redirect to user order history page.
+    $form_state['redirect'] = 'checkout/' . $order->order_id;
+  }
+}
+
+/**
+ * Returns the default value for the checkout completion message settings form.
+ */
+function commerce_checkout_complete_registration_confirmation_text_default() {
+  // If the Filtered HTML text format is available, use a default value with
+  // links in it.
+  if (filter_format_load('filtered_html')) {
+    $value = '';
+    $format = 'filtered_html';
+  }
+  else {
+    // Otherwise select a fallback format and use a plaint text default value.
+    $value = '';
+    $format = filter_fallback_format();
+  }
+
+  return array('value' => $value, 'format' => $format);
+}
+
+/**
+ * Implements hook_i18n_string_list().
+ */
+function commerce_checkout_complete_registration_i18n_string_list($group) {
+  if ($group == 'commerce') {
+    // Allow the registration confirmation text to be translated.
+    $confirmation_text = variable_get('commerce_checkout_registration_confirmation_text', commerce_checkout_complete_registration_confirmation_text_default());
+    $strings['commerce']['checkout']['commerce_checkout_complete_registration']['confirmation_text'] = $confirmation_text['value'];
+
+    return $strings;
+  }
+}
