@@ -2,5 +2,33 @@
 
 /**
  * @file
- * 
+ *
  */
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function adug_dcavl_form_ticket_register_form_alter(&$form, &$form_state) {
+  // Hide all ticket states on the ticket registration form.
+  foreach (element_children($form) as $child) {
+    if (!empty($form[$child]['ticket_state'])) {
+      $form[$child]['ticket_state']['#access'] = FALSE;
+    }
+  }
+}
+
+/**
+ * Implements hook_commerce_order_presave().
+ */
+function adug_dcavl_commerce_order_presave($order) {
+  // Update all tickets on the order to have the correct owner.
+  // Cannot be done via rules because entity property setters aren't defined.
+  if (!empty($order->field_tickets)) {
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+    foreach ($order_wrapper->field_tickets->value() as $ticket) {
+      $ticket->user_uid = $order->uid;
+      entity_save('ticket_registration', $ticket);
+    }
+  }
+}
+
