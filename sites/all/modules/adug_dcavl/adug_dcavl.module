@@ -23,12 +23,13 @@ function adug_dcavl_form_ticket_register_form_alter(&$form, &$form_state) {
 function adug_dcavl_commerce_order_presave($order) {
   // Update all tickets on the order to have the correct owner.
   // Cannot be done via rules because entity property setters aren't defined.
-  if (!empty($order->field_tickets)) {
+  if (!empty($order->field_tickets) && !empty($order->order_id) && !empty($order->uid)) {
     $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
     foreach ($order_wrapper->field_tickets->value() as $ticket) {
-      $ticket->user_uid = $order->uid;
-      entity_save('ticket_registration', $ticket);
+      if (!empty($ticket->trid)) {
+        $ticket->user_uid = $order->uid;
+        entity_save('ticket_registration', $ticket);
+      }
     }
   }
 }
-
