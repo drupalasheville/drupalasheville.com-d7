@@ -1,6 +1,7 @@
 # Ignore configuration files that may contain sensitive information.
 sites/*/settings*.php
 sites/*/settings.php
+sites/*/local.settings.php
 .htaccess
 
 # Ignore default text files
