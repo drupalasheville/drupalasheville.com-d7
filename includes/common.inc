@@ -4422,6 +4422,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL, $skip_alter = FALS
     switch ($item['type']) {
       case 'setting':
         $js_element = $element;
+        $js_element['#attributes'] = !empty($item['attributes']) ? $item['attributes'] : array();
         $js_element['#value_prefix'] = $embed_prefix;
         $js_element['#value'] = 'jQuery.extend(Drupal.settings, ' . drupal_json_encode(drupal_array_merge_deep_array($item['data'])) . ");";
         $js_element['#value_suffix'] = $embed_suffix;
@@ -4430,6 +4431,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL, $skip_alter = FALS
 
       case 'inline':
         $js_element = $element;
+        $js_element['#attributes'] = !empty($item['attributes']) ? $item['attributes'] : array();
         if ($item['defer']) {
           $js_element['#attributes']['defer'] = 'defer';
         }
@@ -4441,6 +4443,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL, $skip_alter = FALS
 
       case 'file':
         $js_element = $element;
+        $js_element['#attributes'] = !empty($item['attributes']) ? $item['attributes'] : array();
         if (!$item['preprocess'] || !$preprocess_js) {
           if ($item['defer']) {
             $js_element['#attributes']['defer'] = 'defer';
@@ -6329,13 +6332,21 @@ function drupal_render_cid_parts($granularity = NULL) {
   }
 
   if (!empty($granularity)) {
+    $cache_per_role = $granularity & DRUPAL_CACHE_PER_ROLE;
+    $cache_per_user = $granularity & DRUPAL_CACHE_PER_USER;
+    // User 1 has special permissions outside of the role system, so when
+    // caching per role is requested, it should cache per user instead.
+    if ($user->uid == 1 && $cache_per_role) {
+      $cache_per_user = TRUE;
+      $cache_per_role = FALSE;
+    }
     // 'PER_ROLE' and 'PER_USER' are mutually exclusive. 'PER_USER' can be a
     // resource drag for sites with many users, so when a module is being
     // equivocal, we favor the less expensive 'PER_ROLE' pattern.
-    if ($granularity & DRUPAL_CACHE_PER_ROLE) {
+    if ($cache_per_role) {
       $cid_parts[] = 'r.' . implode(',', array_keys($user->roles));
     }
-    elseif ($granularity & DRUPAL_CACHE_PER_USER) {
+    elseif ($cache_per_user) {
       $cid_parts[] = "u.$user->uid";
     }
 
