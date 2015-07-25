@@ -4,6 +4,9 @@ sites/*/settings.php
 sites/*/local.settings.php
 .htaccess
 
+# Ignore dev files
+sites/all/themes/*/node_modules
+
 # Ignore default text files
 robots.txt
 /CHANGELOG.txt
