@@ -33,7 +33,7 @@
       top:0;
       bottom: 0;
       background: url(../images/downtown.jpg) center center no-repeat;
-      background-size: 100%;
+      background-size: cover;
       z-index: 2;
       overflow: hidden;
     }
@@ -41,6 +41,51 @@
       position: relative;
       height: 100%;
       z-index: 3;
+      h2 {
+        margin: 0;
+        font-size: 6.3em;
+        font-family: 'Open Sans Condensed';
+        line-height: 1.0em;
+        font-weight: 600;
+        text-shadow: 3px 3px 0 #231f20, 2px 2px 3px #231f20;
+        color: #f26522;
+        text-transform: uppercase;
+      }
+      h3 {
+        margin: 0;
+        font-size: 3.6em;
+        font-family: 'Open Sans Condensed';
+        line-height: 1.0em;
+        font-weight: 600;
+        color: #231f20;
+      }
+      .box {
+        position: absolute;
+        top: 30px;
+        right: 30px;
+        bottom: 30px;
+        left: 30px;
+        padding: 0 0 0 310px;
+      }
+      .text{
+        background: rgba(255,255,255,0.8);
+        padding: 20px 50px;
+        position: relative;
+        box-shadow: 3px 3px 0 #231f20;
+        &:after{
+          width: 0;
+          height: 0;
+          border-style: solid;
+          border-width: 50px 30px 50px 0;
+          border-color: transparent rgba(255,255,255,0.8) transparent transparent;
+          position: absolute;
+          left: -30px;
+          top:50%;
+          margin-top: -50px;
+          content: '';
+          display: block;
+        }
+      }
       .title2014{
         margin: 0;
         height: 130px;
@@ -63,6 +108,18 @@
           bottom: -100px;
           left: 0;
         }
+      }
+      .logo2015 {
+        width: 235px;
+        height: 235px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.9) url(../images/dca2015-logo.png) center center no-repeat;
+        background-size: 223px;
+        box-shadow: 3px 3px 0 #231f20;
+        position: absolute;
+        left: 20px;
+        top:50%;
+        margin-top: -135px;
       }
     }
   }
