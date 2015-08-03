@@ -1,0 +1,33 @@
+<?php
+
+/**
+ * @file
+ * Install and uninstall functions for Google reCAPTCHA
+ */
+
+/**
+ * Implements hook_install()
+ */
+function google_recaptcha_install() {
+
+    $google_recaptcha = array(
+        'public_key' => '',
+        'secret_key' => '',
+        'protected_forms' => array(),
+        'statistics' => array(
+            'status' => 1,
+            'requests' => 0,
+            'success' => 0,
+            'fails' => 0,
+        ),
+    );
+
+    variable_set('google_recaptcha', $google_recaptcha);
+}
+
+/**
+ * Implements hook_uninstall()
+ */
+function google_recaptcha_uninstall() {
+    variable_del('google_recaptcha');
+}

@@ -1,0 +1,225 @@
+<?php
+/**
+ * @file
+ * Primarily Drupal hooks and custom functions for providing
+ * support with Google reCaptcha.
+ */
+
+/**
+ * @author
+ * Sergey Serov
+ * www.sergey-serov.ru
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function google_recaptcha_menu() {
+    $items = array();
+
+    // admin pages only
+    $items['admin/config/spam_protection'] = array(
+        'title' => 'Spam protection',
+        'position' => 'right',
+        'weight' => 80,
+        'page callback' => 'system_admin_menu_block_page',
+        'access arguments' => array('administer'),
+        'file' => 'system.admin.inc',
+        'file path' => drupal_get_path('module', 'system'),
+    );
+    $items['admin/config/spam_protection/google_recaptcha'] = array(
+        'title' => 'Google reCAPTCHA',
+        'page callback' => 'google_recaptcha_summary',
+        'access arguments' => array('administer'),
+        'type' => MENU_NORMAL_ITEM,
+        'file' => 'google_recaptcha.admin.inc',
+        'weight' => 10,
+    );
+    $items['admin/config/spam_protection/google_recaptcha/summary'] = array(
+        'title' => 'Summary',
+        'access arguments' => array('administer'),
+        'type' => MENU_DEFAULT_LOCAL_TASK,
+        'weight' => 10,
+    );
+    $items['admin/config/spam_protection/google_recaptcha/forms'] = array(
+        'title' => 'Forms for protection',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('google_recaptcha_forms'),
+        'access arguments' => array('administer'),
+        'type' => MENU_LOCAL_TASK,
+        'file' => 'google_recaptcha.admin.inc',
+        'weight' => 20,
+    );
+    $items['admin/config/spam_protection/google_recaptcha/keys'] = array(
+        'title' => 'Keys and settings',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('google_recaptcha_keys'),
+        'access arguments' => array('administer'),
+        'type' => MENU_LOCAL_TASK,
+        'file' => 'google_recaptcha.admin.inc',
+        'weight' => 30,
+    );
+
+    return $items;
+}
+
+/**
+ * Implements hook_init().
+ * Set message for admin that he must enter keys (if they empty now).
+ */
+function google_recaptcha_init() {
+    if (user_access('administer')) {
+        $google_recaptcha = variable_get('google_recaptcha');
+        if (empty($google_recaptcha['public_key']) || empty($google_recaptcha['secret_key'])) {
+            drupal_set_message('
+Google reCAPTCHA: You must to define public and secret keys to protect Your site from spam.
+You can do it <a href="/admin/config/spam_protection/google_recaptcha/keys">here</a>.
+Better not put it off on the later time - spammers are not asleep. Let\'s make their life harder!! :))', 'warning');
+        }
+    }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function google_recaptcha_form_alter(&$form, &$form_state, $form_id) {
+
+    if (user_is_logged_in()) {
+        return;
+    }
+
+    $google_recaptcha = variable_get('google_recaptcha');
+
+    // For security usability reasons - forms for
+    // user registration, recovery pass and login always protected
+    $always_protected = array(
+        'user_login',
+        'user_register_form',
+        'user_pass',
+    );
+
+    if (in_array($form_id, $always_protected)) {
+        google_recaptcha_add_captcha($form, $form_id);
+    }
+
+    foreach ($google_recaptcha['protected_forms'] as $protected_form_name) {
+        if (strstr($form_id, $protected_form_name)) {
+            google_recaptcha_add_captcha($form, $form_id);
+        }
+    }
+}
+
+/**
+ * Add captcha
+ */
+function google_recaptcha_add_captcha(&$form, $form_id) {
+    $google_recaptcha = variable_get('google_recaptcha');
+
+    $js_options = array(
+        'scope' => 'footer',
+        'type' => 'external',
+        'defer' => true,
+        // and we waiting when 'async' param will be in core....
+    );
+    drupal_add_js('https://www.google.com/recaptcha/api.js?onload=google_recaptcha_onload&render=explicit', $js_options);
+
+    $captcha_form_name = 'google_recaptcha_' . $form_id;
+    $captcha_container = '<div id="' . $captcha_form_name . '"></div>';
+    $captcha_js = 'grecaptcha.render("' . $captcha_form_name . '", {"sitekey" : "' . $google_recaptcha['public_key'] . '"});';
+
+    $form['actions']['submit']['#prefix'] = empty($form['actions']['submit']['#prefix']) ? $captcha_container : $captcha_container . $form['actions']['submit']['#prefix'];
+    $form['#validate'][] = 'google_recaptcha_validate_submission';
+
+    $google_recaptcha_js = &drupal_static('google_recaptcha_js');
+    $google_recaptcha_js .= $captcha_js;
+}
+
+
+/**
+ * Implements hook_html_head_alter().
+ */
+function google_recaptcha_html_head_alter(&$head_elements) {
+    $google_recaptcha_js = &drupal_static('google_recaptcha_js');
+    $js = 'var google_recaptcha_onload = function() {' . $google_recaptcha_js . '};';
+    drupal_add_js($js, 'inline');
+}
+
+/**
+ * Additional validation function for protected form
+ * Here we ask from Google - is this submission ok?
+ *
+ * @param $form
+ * @param $form_state
+ */
+function google_recaptcha_validate_submission($form, &$form_state) {
+    $google_recaptcha = variable_get('google_recaptcha');
+    $secret = !empty($google_recaptcha['secret_key']) ? $google_recaptcha['secret_key'] : '';
+    $response = isset($_POST['g-recaptcha-response']) ? $_POST['g-recaptcha-response'] : '';
+    $remoteip = ip_address();
+
+    $answer = google_recaptcha_ask_google($secret, $response, $remoteip);
+
+    // collect statistics about requests and responses (if enabled)
+    if ($google_recaptcha['statistics']['status'] == 1) {
+        $google_recaptcha['statistics']['requests'] += 1;
+        empty($answer) ? $google_recaptcha['statistics']['fails'] += 1 : $google_recaptcha['statistics']['success'] += 1;
+    }
+    variable_set('google_recaptcha', $google_recaptcha);
+
+    // Google think this is the bad submission, return form error (aha!)
+    if (!$answer) {
+        form_set_error('submit', t('Google reCAPTCHA does not accept this submission. Try again please, or contact to Site support services.'));
+    }
+}
+
+
+/**
+ * Ask from Google is this submission ok
+ * https://developers.google.com/recaptcha/docs/verify
+ *
+ * @param $secret
+ * @param $response
+ * @return bool
+ */
+function google_recaptcha_ask_google($secret, $response, $remoteip) {
+    $answer = false;
+
+    $request_data = array(
+        'secret' => $secret,
+        'response' => $response,
+        'remoteip' => $remoteip,
+    );
+
+    $ch = curl_init('https://www.google.com/recaptcha/api/siteverify');
+
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $request_data);
+
+    $response_data = curl_exec($ch);
+    curl_close($ch);
+
+    $response_data = json_decode($response_data, true);
+
+    if ($response_data['success'] == false) {
+
+        $error_codes = array(
+            'missing-input-secret' => 'The secret parameter is missing.',
+            'invalid-input-secret' => 'The secret parameter is invalid or malformed.',
+            'missing-input-response' => 'The response parameter is missing.',
+            'invalid-input-response' => 'The response parameter is invalid or malformed.',
+        );
+        if (!empty($response_data['error-codes'])) {
+            $log_vars = array(
+                '@error' => $error_codes[$response_data['error-codes'][0]],
+                '@remoteip' => $remoteip,
+            );
+            watchdog('Google reCAPTCHA', 'Google service returned error "@error". Site visitor address: @remoteip', $log_vars, WATCHDOG_WARNING);
+        }
+    }
+    elseif ($response_data['success'] == true) {
+        $answer = true;
+    }
+
+    return $answer;
+}
