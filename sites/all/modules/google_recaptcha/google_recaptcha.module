@@ -23,21 +23,21 @@ function google_recaptcha_menu() {
         'position' => 'right',
         'weight' => 80,
         'page callback' => 'system_admin_menu_block_page',
-        'access arguments' => array('administer'),
+        'access arguments' => array('administer users'),
         'file' => 'system.admin.inc',
         'file path' => drupal_get_path('module', 'system'),
     );
     $items['admin/config/spam_protection/google_recaptcha'] = array(
         'title' => 'Google reCAPTCHA',
         'page callback' => 'google_recaptcha_summary',
-        'access arguments' => array('administer'),
+        'access arguments' => array('administer users'),
         'type' => MENU_NORMAL_ITEM,
         'file' => 'google_recaptcha.admin.inc',
         'weight' => 10,
     );
     $items['admin/config/spam_protection/google_recaptcha/summary'] = array(
         'title' => 'Summary',
-        'access arguments' => array('administer'),
+        'access arguments' => array('administer users'),
         'type' => MENU_DEFAULT_LOCAL_TASK,
         'weight' => 10,
     );
@@ -45,7 +45,7 @@ function google_recaptcha_menu() {
         'title' => 'Forms for protection',
         'page callback' => 'drupal_get_form',
         'page arguments' => array('google_recaptcha_forms'),
-        'access arguments' => array('administer'),
+        'access arguments' => array('administer users'),
         'type' => MENU_LOCAL_TASK,
         'file' => 'google_recaptcha.admin.inc',
         'weight' => 20,
@@ -54,7 +54,7 @@ function google_recaptcha_menu() {
         'title' => 'Keys and settings',
         'page callback' => 'drupal_get_form',
         'page arguments' => array('google_recaptcha_keys'),
-        'access arguments' => array('administer'),
+        'access arguments' => array('administer users'),
         'type' => MENU_LOCAL_TASK,
         'file' => 'google_recaptcha.admin.inc',
         'weight' => 30,
