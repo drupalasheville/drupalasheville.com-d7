@@ -1,0 +1,20 @@
+#quicktabs-tabpage-view__cod_schedule__page-0 .quicktabs-views-group {
+  clear: both;
+  padding: 20px 0;
+}
+
+.date-display-single {
+  font-weight: bold;
+  #clear: both;
+}
+
+.view-cod-schedule-content .views-row {
+  float: left;
+  width: 25%;
+  border: 1px solid black;
+  min-height: 200px;
+}
+
+.view-cod-schedule-content .views-row .views-field {
+  padding: 5px;
+}
