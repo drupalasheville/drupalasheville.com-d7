@@ -7,3 +7,4 @@ version = 7.x-1.x
 ;files[] =
 ;dependencies[] =
 scripts[] = js/adug_dcavl.js
+stylesheets[all][] = css/adug_dcavl.css
