@@ -1,0 +1,70 @@
+@mobile:  ~"screen and (max-width: @{screen-sm-min})";
+
+.view-dcavl-map {
+  .views-exposed-widget {
+    width: 100%;
+    padding-right: 0;
+  }
+  .form-control {
+    padding: .5em;
+    height: auto;
+    overflow: hidden;
+  }
+  .bef-checkboxes {
+    .form-item, .form-item.highlight {
+      width: auto;
+      float: left;
+      padding: .25em .5em;
+      margin-right: 1em;
+    }
+    input, label {
+      float: left;
+      width: auto;
+      margin: 0;
+      height: 2em;
+      line-height: 2em;
+    }
+    input {
+      margin-right: .5em;
+    }
+    label {
+      // margin-right: 1em;
+    }
+  }
+}
+
+.view-cod-schedule {
+  .views-field-field-evttime-date-1 {
+    font-size: 1.5em;
+    color: @gray;
+    margin-bottom: .5em;
+  }
+  .view-cod-schedule-content {
+    .views-row {
+      padding: 1em;
+      background: @gray-lighter;
+      border: 0;
+      .views-field-title {
+        margin-bottom: .5em;
+        a {
+          font-weight: bold;
+        }
+      }
+      .views-field {
+        padding: 0;
+      }
+    }
+    .views-row-odd {
+      background: #F7F6F6;
+    }
+  }
+}
+
+// Quick fix for mobile
+@media @mobile {
+  .view-cod-schedule {
+    .views-row {
+      width: 100%;
+    }
+  }
+}
