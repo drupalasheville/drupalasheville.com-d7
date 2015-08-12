@@ -58,6 +58,8 @@ stylesheets[all][] = css/docs.min.css
 ; settings[bootstrap_cdn] = ''
 
 ;scripts[] = js/custom-2014.js
+scripts[] = js/tableit.min.js
+scripts[] = js/functions.js
 
 ; ;-------------------------
 ; ; METHOD 2: Bootstrap CDN

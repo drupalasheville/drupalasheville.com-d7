@@ -1,0 +1,102 @@
+// Bootstrap variables.
+// @import 'variables.less';
+
+// Media query variables.
+@tablet:  ~"screen and (min-width: @{screen-sm-min})";
+@normal:  ~"screen and (min-width: @{screen-md-min})";
+@wide:    ~"screen and (min-width: @{screen-lg-min})";
+
+@media only screen and (max-width: 768px) {
+
+	.tableit{
+		clear:both;
+		width:100%;
+
+		table&,thead,tbody,th,td,tr{
+			display: block;
+		}
+
+		/* Hide table headers (but not display: none;, for accessibility) */
+		thead tr {
+			position: absolute;
+			top: -9999px;
+			left: -9999px;
+		}
+
+		/* If first row acts as the table header */
+		&.noHead{
+			tr:first-child{
+				position: absolute;
+				top: -9999px;
+				left: -9999px;
+			}
+		}
+
+		tr{
+			padding-bottom: 1em;
+			margin-bottom: 1em;
+			border-bottom: 1px solid @gray-lighter;
+			// float:left;
+			&:after{
+				content: ".";
+				display: block;
+				clear: both;
+				visibility: hidden;
+				line-height: 0;
+				height: 0;
+			}
+		}
+
+		td{
+			/* Behave  like a "row" */
+			border: none;
+			position: relative;
+			padding-left: 50% !important;
+			white-space: normal;
+			text-align:left;
+			float:left;
+			width: 100%;
+			min-height: 2em;
+			&:first-child:before {
+				color: black;
+			}
+		}
+
+		td:before {
+			/* Now like a table header */
+			position: absolute;
+			top: 0px;
+			left: 0px;
+			width: 100%%;
+			padding-right: 10px;
+			padding-left:0;
+			//white-space: nowrap;
+			text-align:left;
+			font-weight: bold;
+			color: @brand-primary;
+		}
+
+		/* Label the data */
+		td:before { content: attr(data-title); }
+	}
+}
+
+@media @normal {
+	table {
+		margin-bottom: 2em;
+		thead {
+			background: @gray-lighter;
+		}
+		th, td {
+			padding: .5em;
+		}
+		td {
+			strong {
+				color: @brand-primary;
+			}
+		}
+		tr {
+			border-bottom: 1px solid @gray-lighter;
+		}
+	}
+}

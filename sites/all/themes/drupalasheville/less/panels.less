@@ -1,0 +1,13 @@
+@mobile:  ~"screen and (max-width: @{screen-sm-min})";
+
+// Quick fix for location panels
+@media @mobile {
+  .panel-flexible.panels-flexible-17 {
+    .panels-flexible-region-17-center {
+      width: 100%;
+    }
+    .panels-flexible-region-17-right {
+      width: 100%;
+    }
+  }
+}

@@ -1,0 +1,26 @@
+.quicktabs-wrapper {
+  ul.quicktabs-tabs.quicktabs-style-zen {
+    background: none;
+    border-bottom: 3px solid @brand-primary;
+    height: auto;
+    overflow: hidden;
+    padding: 0;
+    li, li.active, li a, li.active a {
+      background: none;
+    }
+    li {
+      padding: 0;
+      margin: 0 .25em 0 0;
+      a {
+        padding: .5em 1em;
+        font-size: 1em;
+      }
+      &.active {
+        background: @brand-primary;
+        a {
+          color: white;
+        }
+      }
+    }
+  }
+}
